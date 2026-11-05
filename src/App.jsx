@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { 
   getAuth, 
   signInAnonymously, 
@@ -42,10 +42,17 @@ import {
   ExternalLink,
   RotateCcw,
   SearchCheck,
-  SendHorizontal
+  SendHorizontal,
+  Cloud,
+  CloudOff,
+  AlertTriangle,
+  RefreshCw,
+  FileText
 } from 'lucide-react';
 
-// Configurações do Firebase
+// ============================================================================
+// ATENÇÃO: COLE AQUI SUAS CHAVE DE CONFIGURAÇÃO DO FIREBASE (PROJETO REAL)
+// ============================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyDummyKeyForMockSetup123456789",
   authDomain: "consultas-medicas-app.firebaseapp.com",
@@ -55,14 +62,20 @@ const firebaseConfig = {
   appId: "1:1234567890:web:abcdef123456"
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = "consultas-medicas-app";
+// Verifica se as chaves foram alteradas do padrão
+const isDummyConfig = firebaseConfig.apiKey.includes("DummyKey");
 
-const LOCAL_STORAGE_KEY = 'consultas_medicas_backup_data_v4';
+let app, auth, db;
+try {
+  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+  auth = getAuth(app);
+  db = getFirestore(app);
+} catch (error) {
+  console.warn("Falha ao inicializar o Firebase SDK:", error);
+}
 
-// Dados iniciais importados da planilha
+const LOCAL_STORAGE_KEY = 'consultas_medicas_backup_data_v5';
+
 const INITIAL_APPOINTMENTS = [
   { cliente: 'Tania', especialidade: 'Oftalmologista', medico: 'Luiz Fernando Pozzi', local: 'COH - Franceschini', endereco: 'Rua Franceschini, Campinas - SP', dia: '2026-10-31', hora: '00:00' },
   { cliente: 'Oscar', especialidade: 'Exame', medico: 'sem nome', local: 'DMS Burnier', endereco: 'Av. Dr. Alberto Sarmento, Campinas - SP', dia: '2026-11-02', hora: '09:00' },
@@ -80,33 +93,38 @@ const INITIAL_APPOINTMENTS = [
 ];
 
 export default function App() {
-  const [user, setUser] = useState(null);
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isInitializing, setIsInitializing] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showAutoNoticeModal, setShowAutoNoticeModal] = useState(false);
   const [showInstallGuideModal, setShowInstallGuideModal] = useState(false);
+  const [showSyncInfoModal, setShowSyncInfoModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [usingFallback, setUsingFallback] = useState(false);
+  
+  // Referência para mover o foco para a Data da Consulta
+  const dateInputRef = useRef(null);
+  
+  // Estado para Modal de Confirmação de Exclusão
+  const [itemToDelete, setItemToDelete] = useState(null);
+  
+  // Status da Nuvem
+  const [isCloudConnected, setIsCloudConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState(null);
 
-  // Modos de Visualização: 'proximas' (Padrão) ou 'historico'
   const [viewMode, setViewMode] = useState('proximas'); 
   const [selectedPatient, setSelectedPatient] = useState('Todos');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [isReturnAppointment, setIsReturnAppointment] = useState(false);
 
-  // Seletores personalizados no cadastro
   const [isCustomCliente, setIsCustomCliente] = useState(false);
   const [isCustomEspecialidade, setIsCustomEspecialidade] = useState(false);
   const [isCustomMedico, setIsCustomMedico] = useState(false);
   const [isCustomLocal, setIsCustomLocal] = useState(false);
 
-  // Data atual real do sistema
   const todayStr = useMemo(() => {
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -115,9 +133,8 @@ export default function App() {
     return `${yyyy}-${mm}-${dd}`;
   }, []);
 
-  // Consultas agendadas para HOJE
   const todayAppointments = useMemo(() => {
-    return appointments.filter(app => app.dia === todayStr);
+    return appointments.filter(appItem => appItem.dia === todayStr);
   }, [appointments, todayStr]);
 
   const [formData, setFormData] = useState({
@@ -131,139 +148,76 @@ export default function App() {
     observacoes: ''
   });
 
-  // Lista de sugestões e Pacientes Extraídos DINAMICAMENTE e ORDENADOS ALFABETICAMENTE
-  const optionsList = useMemo(() => {
-    const clientesSet = new Set();
-    const espSet = new Set();
-    const medSet = new Set();
-    const localSet = new Set();
-
-    appointments.forEach(a => {
-      if (a.cliente && a.cliente.trim()) clientesSet.add(a.cliente.trim());
-      if (a.especialidade && a.especialidade.trim()) espSet.add(a.especialidade.trim());
-      if (a.medico && a.medico.trim()) medSet.add(a.medico.trim());
-      if (a.local && a.local.trim()) localSet.add(a.local.trim());
-    });
-
-    const sortFn = (a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' });
-
-    const clientesArray = Array.from(clientesSet).sort(sortFn);
-    // Se não houver clientes cadastrados ainda, usa padrão para não quebrar
-    const finalClientes = clientesArray.length > 0 ? clientesArray : ['Tania', 'Oscar', 'Bruna'];
-
-    return {
-      clientes: finalClientes,
-      especialidades: Array.from(espSet).sort(sortFn),
-      medicos: Array.from(medSet).sort(sortFn),
-      locais: Array.from(localSet).sort(sortFn)
-    };
-  }, [appointments]);
-
-  // Enviar lembrete via WhatsApp (Individual)
-  const handleSendWhatsAppReminder = (appItem, isTodayNotice = false) => {
-    const dataFormatada = formatDate(appItem.dia);
-    const horaFormatada = appItem.hora === '00:00' ? 'A confirmar' : `${appItem.hora}h`;
-    const localInfo = [appItem.local, appItem.endereco].filter(Boolean).join(' - ');
-    const queryMaps = encodeURIComponent([appItem.local, appItem.endereco].filter(Boolean).join(', '));
-    const mapsLink = `https://www.google.com/maps/search/?api=1&query=${queryMaps}`;
-
-    const cabecalho = isTodayNotice 
-      ? `🔔 *SUA CONSULTA É HOJE!* 🔔\n\nOlá *${appItem.cliente}*, lembrete do seu compromisso médico agendado para hoje:`
-      : `📌 *LEMBRETE DE CONSULTA MÉDICA* 📌\n\nOlá *${appItem.cliente}*, segue o lembrete da sua consulta:`;
-
-    const mensagem = 
-`${cabecalho}
-
-🩺 *Especialidade:* ${appItem.especialidade}
-👨‍⚕️ *Médico(a):* ${appItem.medico || 'Não especificado'}
-📅 *Data:* ${dataFormatada} às ${horaFormatada}
-🏥 *Local:* ${localInfo}
-
-🗺️ *Abrir rota no Google Maps:*
-${mapsLink}
-
-_Tenha um ótimo atendimento!_`;
-
-    const encodedMessage = encodeURIComponent(mensagem);
-    window.open(`https://api.whatsapp.com/send?text=${encodedMessage}`, '_blank');
-  };
-
-  // Enviar TODOS os lembretes do dia em um ÚNICO RESUMO COMPLETO para o WhatsApp
-  const handleSendAllTodayRemindersSummary = () => {
-    if (todayAppointments.length === 0) return;
-
-    let mensagem = `🔔 *RESUMO DAS CONSULTAS DE HOJE (${formatDate(todayStr)})* 🔔\n\nExistem *${todayAppointments.length} agendamentos* para hoje:\n\n`;
-
-    todayAppointments.forEach((appItem, idx) => {
-      const horaFormatada = appItem.hora === '00:00' ? 'A confirmar' : `${appItem.hora}h`;
-      const localInfo = [appItem.local, appItem.endereco].filter(Boolean).join(' - ');
-      const queryMaps = encodeURIComponent([appItem.local, appItem.endereco].filter(Boolean).join(', '));
-      const mapsLink = `https://www.google.com/maps/search/?api=1&query=${queryMaps}`;
-
-      mensagem += `-----------------------------------\n`;
-      mensagem += `📌 *${idx + 1}. PACIENTE: ${appItem.cliente.toUpperCase()}*\n`;
-      mensagem += `🩺 *Especialidade:* ${appItem.especialidade}\n`;
-      mensagem += `👨‍⚕️ *Médico(a):* ${appItem.medico || 'Não especificado'}\n`;
-      mensagem += `🕒 *Horário:* ${horaFormatada}\n`;
-      mensagem += `🏥 *Local:* ${localInfo}\n`;
-      mensagem += `🗺️ *Google Maps:* ${mapsLink}\n\n`;
-    });
-
-    mensagem += `_Por favor, fiquem atentos aos horários!_`;
-
-    const encodedMessage = encodeURIComponent(mensagem);
-    window.open(`https://api.whatsapp.com/send?text=${encodedMessage}`, '_blank');
-  };
-
-  const handleSendEmailReminder = (appItem) => {
-    const dataFormatada = formatDate(appItem.dia);
-    const horaFormatada = appItem.hora === '00:00' ? 'A confirmar' : `${appItem.hora}h`;
-    const localInfo = [appItem.local, appItem.endereco].filter(Boolean).join(' - ');
-
-    const assunto = encodeURIComponent(`Lembrete de Consulta Médica: ${appItem.especialidade} - ${appItem.cliente}`);
-    const corpo = encodeURIComponent(
-`Olá,
-
-Segue o lembrete da consulta agendada:
-
-• Paciente: ${appItem.cliente}
-• Especialidade: ${appItem.especialidade}
-• Médico(a): ${appItem.medico || 'Não informado'}
-• Data: ${dataFormatada} às ${horaFormatada}
-• Local: ${localInfo}
-
-Atenciosamente,
-Agenda Familiar de Consultas`
-    );
-
-    window.open(`mailto:?subject=${assunto}&body=${corpo}`, '_blank');
-  };
-
-  const handlePrintPDF = () => {
-    window.print();
-  };
-
-  // Autenticação Firebase com Fallback Local
+  // Conectar ou recuar para armazenamento local
   useEffect(() => {
-    const initAuth = async () => {
+    if (isDummyConfig || !db || !auth) {
+      setIsCloudConnected(false);
+      setConnectionError("As chaves reais do Firebase não foram coladas no arquivo App.jsx.");
+      loadFromLocalStorage();
+      return;
+    }
+
+    let unsubscribeSnapshot;
+
+    const initFirebaseSync = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
+        await signInAnonymously(auth);
+        
+        // Conexão em Tempo Real
+        const colRef = collection(db, 'consultas_familia');
+        
+        unsubscribeSnapshot = onSnapshot(colRef, 
+          (snapshot) => {
+            const data = snapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+
+            if (data.length > 0) {
+              setAppointments(data);
+            } else {
+              // Se o banco online estiver vazio, popula com os dados base
+              seedCloudDatabase(colRef);
+            }
+            setIsCloudConnected(true);
+            setConnectionError(null);
+            setLoading(false);
+          }, 
+          (err) => {
+            console.warn("Erro ao ler banco de dados do Firebase:", err);
+            setIsCloudConnected(false);
+            setConnectionError(err.message);
+            loadFromLocalStorage();
+          }
+        );
       } catch (err) {
-        console.warn("Autenticação indisponível. Ativando armazenamento local:", err);
-        setUsingFallback(true);
+        console.warn("Falha ao autenticar no Firebase:", err);
+        setIsCloudConnected(false);
+        setConnectionError(err.message);
+        loadFromLocalStorage();
       }
     };
-    initAuth();
 
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-    });
-    return () => unsubscribe();
+    initFirebaseSync();
+
+    return () => {
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+    };
   }, []);
+
+  const seedCloudDatabase = async (colRef) => {
+    try {
+      const promises = INITIAL_APPOINTMENTS.map(item => 
+        addDoc(colRef, {
+          ...item,
+          createdAt: new Date().toISOString()
+        })
+      );
+      await Promise.all(promises);
+    } catch (err) {
+      console.error("Erro ao popular o banco:", err);
+    }
+  };
 
   const loadFromLocalStorage = () => {
     try {
@@ -294,73 +248,109 @@ Agenda Familiar de Consultas`
     }
   };
 
-  useEffect(() => {
-    const colRef = collection(db, 'artifacts', appId, 'public_data', 'consultas', 'list');
-    
-    const unsubscribe = onSnapshot(colRef, 
-      (snapshot) => {
-        const data = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+  const optionsList = useMemo(() => {
+    if (loading) {
+      return { clientes: [], especialidades: [], medicos: [], locais: [] };
+    }
 
-        if (data.length > 0) {
-          setAppointments(data);
-          setUsingFallback(false);
-          setLoading(false);
-        } else {
-          loadFromLocalStorage();
-        }
-      }, 
-      (err) => {
-        console.warn("Alternando para persistência local:", err.message);
-        setUsingFallback(true);
-        loadFromLocalStorage();
-      }
+    const clientesSet = new Set();
+    const espSet = new Set();
+    const medSet = new Set();
+    const localSet = new Set();
+
+    appointments.forEach(a => {
+      if (a.cliente && a.cliente.trim()) clientesSet.add(a.cliente.trim());
+      if (a.especialidade && a.especialidade.trim()) espSet.add(a.especialidade.trim());
+      if (a.medico && a.medico.trim()) medSet.add(a.medico.trim());
+      if (a.local && a.local.trim()) localSet.add(a.local.trim());
+    });
+
+    const sortFn = (a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' });
+
+    return {
+      clientes: Array.from(clientesSet).sort(sortFn),
+      especialidades: Array.from(espSet).sort(sortFn),
+      medicos: Array.from(medSet).sort(sortFn),
+      locais: Array.from(localSet).sort(sortFn)
+    };
+  }, [appointments, loading]);
+
+  const handleSendWhatsAppReminder = (appItem) => {
+    const dataFormatada = formatDate(appItem.dia);
+    const horaFormatada = appItem.hora === '00:00' ? 'A confirmar' : `${appItem.hora}h`;
+    const localInfo = [appItem.local, appItem.endereco].filter(Boolean).join(' - ');
+    const queryMaps = encodeURIComponent([appItem.local, appItem.endereco].filter(Boolean).join(', '));
+    const mapsLink = `https://www.google.com/maps/search/?api=1&query=${queryMaps}`;
+
+    const mensagem = 
+`📌 *LEMBRETE DE CONSULTA MÉDICA* 📌
+
+Olá *${appItem.cliente}*, segue o lembrete da sua consulta:
+
+🩺 *Especialidade:* ${appItem.especialidade}
+👨‍⚕️ *Médico(a):* ${appItem.medico || 'Não especificado'}
+📅 *Data:* ${dataFormatada} às ${horaFormatada}
+🏥 *Local:* ${localInfo}
+
+🗺️ *Abrir rota no Google Maps:*
+${mapsLink}
+
+_Tenha um ótimo atendimento!_`;
+
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(mensagem)}`, '_blank');
+  };
+
+  const handleSendAllTodayRemindersSummary = () => {
+    if (todayAppointments.length === 0) return;
+
+    let mensagem = `🔔 *RESUMO DAS CONSULTAS DE HOJE (${formatDate(todayStr)})* 🔔\n\nExistem *${todayAppointments.length} agendamentos* para hoje:\n\n`;
+
+    todayAppointments.forEach((appItem, idx) => {
+      const horaFormatada = appItem.hora === '00:00' ? 'A confirmar' : `${appItem.hora}h`;
+      const localInfo = [appItem.local, appItem.endereco].filter(Boolean).join(' - ');
+      const queryMaps = encodeURIComponent([appItem.local, appItem.endereco].filter(Boolean).join(', '));
+      const mapsLink = `https://www.google.com/maps/search/?api=1&query=${queryMaps}`;
+
+      mensagem += `-----------------------------------\n`;
+      mensagem += `📌 *${idx + 1}. PACIENTE: ${appItem.cliente.toUpperCase()}*\n`;
+      mensagem += `🩺 *Especialidade:* ${appItem.especialidade}\n`;
+      mensagem += `👨‍⚕️ *Médico(a):* ${appItem.medico || 'Não especificado'}\n`;
+      mensagem += `🕒 *Horário:* ${horaFormatada}\n`;
+      mensagem += `🏥 *Local:* ${localInfo}\n`;
+      mensagem += `🗺️ *Google Maps:* ${mapsLink}\n\n`;
+    });
+
+    mensagem += `_Por favor, fiquem atentos aos horários!_`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(mensagem)}`, '_blank');
+  };
+
+  const handleSendEmailReminder = (appItem) => {
+    const dataFormatada = formatDate(appItem.dia);
+    const horaFormatada = appItem.hora === '00:00' ? 'A confirmar' : `${appItem.hora}h`;
+    const localInfo = [appItem.local, appItem.endereco].filter(Boolean).join(' - ');
+
+    const assunto = encodeURIComponent(`Lembrete de Consulta Médica: ${appItem.especialidade} - ${appItem.cliente}`);
+    const corpo = encodeURIComponent(
+`Olá,
+
+Segue o lembrete da consulta agendada:
+
+• Paciente: ${appItem.cliente}
+• Especialidade: ${appItem.especialidade}
+• Médico(a): ${appItem.medico || 'Não informado'}
+• Data: ${dataFormatada} às ${horaFormatada}
+• Local: ${localInfo}
+
+Atenciosamente,
+Agenda Familiar de Consultas`
     );
 
-    return () => unsubscribe();
-  }, [user]);
-
-  const handleSeedData = async () => {
-    setIsInitializing(true);
-
-    if (usingFallback || !user) {
-      const initialWithIds = INITIAL_APPOINTMENTS.map((item, index) => ({
-        ...item,
-        id: `local-${index}-${Date.now()}`
-      }));
-      saveToLocalStorage(initialWithIds);
-      setIsInitializing(false);
-      return;
-    }
-
-    try {
-      const colRef = collection(db, 'artifacts', appId, 'public_data', 'consultas', 'list');
-      const promises = INITIAL_APPOINTMENTS.map(item => 
-        addDoc(colRef, {
-          ...item,
-          createdAt: new Date().toISOString()
-        })
-      );
-      await Promise.all(promises);
-    } catch (err) {
-      console.warn("Salvando em armazenamento local:", err.message);
-      setUsingFallback(true);
-      const initialWithIds = INITIAL_APPOINTMENTS.map((item, index) => ({
-        ...item,
-        id: `local-${index}-${Date.now()}`
-      }));
-      saveToLocalStorage(initialWithIds);
-    } finally {
-      setIsInitializing(false);
-    }
+    window.open(`mailto:?subject=${assunto}&body=${corpo}`, '_blank');
   };
 
   const openGoogleMapsRoute = (local, endereco) => {
     const query = [local, endereco].filter(Boolean).join(', ');
-    const encodedQuery = encodeURIComponent(query);
-    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodedQuery}`;
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
     window.open(mapsUrl, '_blank', 'noopener,noreferrer');
   };
 
@@ -401,7 +391,6 @@ Agenda Familiar de Consultas`
       });
   }, [appointments, viewMode, selectedPatient, searchTerm, todayStr]);
 
-  // Modal com opção de Retorno
   const openModal = (appToEdit = null, isReturn = false) => {
     setIsCustomCliente(false);
     setIsCustomEspecialidade(false);
@@ -412,7 +401,7 @@ Agenda Familiar de Consultas`
     if (isReturn && appToEdit) {
       setEditingId(null);
       setFormData({
-        cliente: appToEdit.cliente || optionsList.clientes[0] || '',
+        cliente: appToEdit.cliente || (optionsList.clientes[0] || ''),
         especialidade: appToEdit.especialidade ? `${appToEdit.especialidade} (Retorno)` : 'Retorno',
         medico: appToEdit.medico || '',
         local: appToEdit.local || '',
@@ -424,7 +413,7 @@ Agenda Familiar de Consultas`
     } else if (appToEdit) {
       setEditingId(appToEdit.id);
       setFormData({
-        cliente: appToEdit.cliente || optionsList.clientes[0] || '',
+        cliente: appToEdit.cliente || (optionsList.clientes[0] || ''),
         especialidade: appToEdit.especialidade || '',
         medico: appToEdit.medico || '',
         local: appToEdit.local || '',
@@ -435,12 +424,18 @@ Agenda Familiar de Consultas`
       });
     } else {
       setEditingId(null);
+      const defaultLocal = optionsList.locais[0] || '';
+      // Busca o último endereço cadastrado para essa clínica padrão, se existir
+      const existingAddress = defaultLocal 
+        ? (appointments.find(a => a.local === defaultLocal && a.endereco)?.endereco || '')
+        : '';
+
       setFormData({
         cliente: optionsList.clientes[0] || '',
         especialidade: optionsList.especialidades[0] || '',
         medico: optionsList.medicos[0] || '',
-        local: optionsList.locais[0] || '',
-        endereco: '',
+        local: defaultLocal,
+        endereco: existingAddress,
         dia: todayStr,
         hora: '09:00',
         observacoes: ''
@@ -449,75 +444,49 @@ Agenda Familiar de Consultas`
     setIsModalOpen(true);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // Função para tratar a seleção da clínica, autopreenchendo endereço e mudando o foco para a data
+  const handleClinicChange = (selectedLocal) => {
+    if (selectedLocal === 'NEW') {
+      setIsCustomLocal(true);
+      setFormData(prev => ({ ...prev, local: '', endereco: '' }));
+    } else {
+      setIsCustomLocal(false);
+      // Localiza o endereço associado a esta clínica nos agendamentos
+      const matchingApp = appointments.find(a => a.local === selectedLocal && a.endereco);
+      const foundAddress = matchingApp ? matchingApp.endereco : '';
+      
+      setFormData(prev => ({ 
+        ...prev, 
+        local: selectedLocal, 
+        endereco: foundAddress 
+      }));
 
-    if (usingFallback) {
-      if (editingId) {
-        const updated = appointments.map(appItem => 
-          appItem.id === editingId ? { ...appItem, ...formData } : appItem
-        );
-        saveToLocalStorage(updated);
-      } else {
-        const newItem = {
-          ...formData,
-          id: `local-${Date.now()}`
-        };
-        saveToLocalStorage([newItem, ...appointments]);
-      }
-      setIsModalOpen(false);
-      return;
-    }
-
-    try {
-      if (editingId) {
-        const docRef = doc(db, 'artifacts', appId, 'public_data', 'consultas', 'list', editingId);
-        await updateDoc(docRef, {
-          ...formData,
-          updatedAt: new Date().toISOString()
-        });
-      } else {
-        const colRef = collection(db, 'artifacts', appId, 'public_data', 'consultas', 'list');
-        await addDoc(colRef, {
-          ...formData,
-          createdAt: new Date().toISOString()
-        });
-      }
-      setIsModalOpen(false);
-    } catch (err) {
-      console.warn("Salvando alteração localmente:", err.message);
-      setUsingFallback(true);
-      if (editingId) {
-        const updated = appointments.map(appItem => 
-          appItem.id === editingId ? { ...appItem, ...formData } : appItem
-        );
-        saveToLocalStorage(updated);
-      } else {
-        const newItem = {
-          ...formData,
-          id: `local-${Date.now()}`
-        };
-        saveToLocalStorage([newItem, ...appointments]);
-      }
-      setIsModalOpen(false);
+      // Move o foco diretamente para a Data da Consulta
+      setTimeout(() => {
+        if (dateInputRef.current) {
+          dateInputRef.current.focus();
+        }
+      }, 50);
     }
   };
 
   const handleDelete = async (id) => {
-    if (usingFallback) {
+    if (!isCloudConnected || !db) {
       const updated = appointments.filter(appItem => appItem.id !== id);
       saveToLocalStorage(updated);
+      setItemToDelete(null);
       return;
     }
 
     try {
-      const docRef = doc(db, 'artifacts', appId, 'public_data', 'consultas', 'list', id);
+      const docRef = doc(db, 'consultas_familia', id);
       await deleteDoc(docRef);
+      setItemToDelete(null);
     } catch (err) {
-      console.warn("Excluindo item localmente:", err.message);
-      setUsingFallback(true);
+      console.warn("Erro ao excluir do banco online:", err.message);
       const updated = appointments.filter(appItem => appItem.id !== id);
       saveToLocalStorage(updated);
+      setItemToDelete(null);
     }
   };
 
@@ -552,7 +521,6 @@ Agenda Familiar de Consultas`
           badge: 'bg-pink-200 text-pink-800 border-pink-300',
           filterActive: 'bg-pink-200 border-pink-400 text-pink-900 font-black shadow-xs ring-2 ring-pink-400',
           filterInactive: 'bg-pink-50/80 text-pink-800 border-pink-200 hover:bg-pink-100',
-          accent: 'text-pink-700'
         };
       case 'Oscar':
         return {
@@ -561,7 +529,6 @@ Agenda Familiar de Consultas`
           badge: 'bg-amber-200 text-amber-900 border-amber-300',
           filterActive: 'bg-amber-200 border-amber-400 text-amber-950 font-black shadow-xs ring-2 ring-amber-400',
           filterInactive: 'bg-amber-50/80 text-amber-800 border-amber-200 hover:bg-amber-100',
-          accent: 'text-amber-800'
         };
       case 'Bruna':
         return {
@@ -570,23 +537,20 @@ Agenda Familiar de Consultas`
           badge: 'bg-purple-200 text-purple-900 border-purple-300',
           filterActive: 'bg-purple-200 border-purple-400 text-purple-950 font-black shadow-xs ring-2 ring-purple-400',
           filterInactive: 'bg-purple-50/80 text-purple-800 border-purple-200 hover:bg-purple-100',
-          accent: 'text-purple-800'
         };
       default:
         return {
-          bg: 'bg-sky-100 border-sky-300 text-sky-950',
-          pin: 'bg-sky-500',
-          badge: 'bg-sky-200 text-sky-900 border-sky-300',
-          filterActive: 'bg-sky-200 border-sky-400 text-sky-950 font-black shadow-xs ring-2 ring-sky-400',
-          filterInactive: 'bg-sky-50/80 text-sky-800 border-sky-200 hover:bg-sky-100',
-          accent: 'text-sky-800'
+          bg: 'bg-emerald-100 border-emerald-300 text-emerald-950',
+          pin: 'bg-emerald-500',
+          badge: 'bg-emerald-200 text-emerald-900 border-emerald-300',
+          filterActive: 'bg-emerald-200 border-emerald-400 text-emerald-950 font-black shadow-xs ring-2 ring-emerald-400',
+          filterInactive: 'bg-emerald-50/80 text-emerald-800 border-emerald-200 hover:bg-emerald-100',
         };
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 font-sans pb-12">
-      {/* Cabeçalho */}
       <header className="bg-slate-900 text-white shadow-md sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -602,30 +566,42 @@ Agenda Familiar de Consultas`
                     Post-its
                   </span>
                 </h1>
-                <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5 text-left">
-                  <span className={`inline-block w-2 h-2 rounded-full ${usingFallback ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse'}`}></span>
-                  {usingFallback ? 'Modo Local (Sincronização Ativa)' : 'Sincronizado em Tempo Real'}
-                </p>
+                
+                {/* STATUS DA CONEXÃO DE SINCRONIZAÇÃO DA NUVEM */}
+                <button 
+                  onClick={() => setShowSyncInfoModal(true)}
+                  className="mt-1 flex items-center gap-1.5 text-xs text-left cursor-pointer hover:opacity-80 transition"
+                >
+                  {isCloudConnected ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                      Sincronizado na Nuvem (Todos Vêem)
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                      <AlertTriangle className="w-3 h-3 text-amber-400" />
+                      Salvo Apenas Neste Aparelho (Clique para Ativar)
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
 
             {/* Ações Rápidas */}
             <div className="flex items-center space-x-2 w-full sm:w-auto justify-end flex-wrap gap-y-2">
-              {appointments.length === 0 && !loading && (
-                <button
-                  onClick={handleSeedData}
-                  disabled={isInitializing}
-                  className="flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  <span>{isInitializing ? 'Importando...' : 'Carregar Dados'}</span>
-                </button>
-              )}
+              <button
+                onClick={() => setShowSyncInfoModal(true)}
+                className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-xs ${
+                  isCloudConnected ? 'bg-emerald-800/60 text-emerald-200 border border-emerald-600' : 'bg-amber-600 text-white font-black animate-pulse'
+                }`}
+              >
+                {isCloudConnected ? <Cloud className="w-4 h-4 text-emerald-300" /> : <CloudOff className="w-4 h-4" />}
+                <span>{isCloudConnected ? 'Nuvem OK' : 'Ativar Nuvem'}</span>
+              </button>
 
               <button
                 onClick={() => setShowInstallGuideModal(true)}
                 className="flex items-center space-x-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-xs"
-                title="Como Instalar no Celular da Família"
               >
                 <Smartphone className="w-4 h-4" />
                 <span>Baixar no Celular</span>
@@ -633,8 +609,7 @@ Agenda Familiar de Consultas`
 
               <button
                 onClick={() => setShowAutoNoticeModal(true)}
-                className="relative flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs print:hidden"
-                title="Central de Notificações Automáticas no WhatsApp"
+                className="relative flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs"
               >
                 <BellRing className="w-4 h-4" />
                 <span>Notificar Hoje</span>
@@ -646,25 +621,8 @@ Agenda Familiar de Consultas`
               </button>
 
               <button
-                onClick={handlePrintPDF}
-                className="flex items-center space-x-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-xl text-xs font-bold transition shadow-xs print:hidden"
-                title="Exportar em PDF"
-              >
-                <Printer className="w-4 h-4 text-amber-400" />
-                <span>Exportar PDF</span>
-              </button>
-
-              <button
-                onClick={() => setShowShareModal(true)}
-                className="flex items-center space-x-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-xl text-xs font-bold transition shadow-xs print:hidden"
-              >
-                <Share2 className="w-4 h-4 text-amber-400" />
-                <span>Compartilhar</span>
-              </button>
-
-              <button
                 onClick={() => openModal()}
-                className="flex items-center space-x-1.5 px-4 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 rounded-xl text-xs font-black shadow-xs transition transform active:scale-95 print:hidden"
+                className="flex items-center space-x-1.5 px-4 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 rounded-xl text-xs font-black shadow-xs transition transform active:scale-95"
               >
                 <Plus className="w-4 h-4" />
                 <span>Novo Post-it</span>
@@ -675,44 +633,36 @@ Agenda Familiar de Consultas`
         </div>
       </header>
 
-      {/* Banner de Notificação para HOJE com Contador Exato */}
-      {todayAppointments.length > 0 && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 print:hidden">
-          <div className="bg-emerald-50 border-2 border-emerald-300 rounded-3xl p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 text-left">
+      {/* Alerta de Desconexão da Nuvem */}
+      {!isCloudConnected && !loading && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 shadow-xs flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center space-x-3 text-left">
-              <div className="p-3 bg-emerald-500 text-white rounded-2xl shrink-0">
-                <BellRing className="w-6 h-6 animate-bounce" />
-              </div>
+              <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0" />
               <div className="text-left">
-                <h3 className="text-sm font-black text-emerald-950 text-left">
-                  {todayAppointments.length === 1 
-                    ? 'Existe 1 consulta médica agendada para HOJE!' 
-                    : `Existem ${todayAppointments.length} consultas médicas agendadas para HOJE!`}
-                </h3>
-                <p className="text-xs text-emerald-800 mt-0.5 text-left">
-                  Pacientes com atendimento hoje: <span className="font-bold">{todayAppointments.map(a => `${a.cliente} (${a.especialidade})`).join(', ')}</span>
+                <h4 className="text-xs font-black text-amber-950">A Sincronização entre Notebook e Celular não está ativa!</h4>
+                <p className="text-[11px] text-amber-800">
+                  Os dados digitados neste aparelho não aparecerão no celular dos outros familiares até que as chaves reais do Firebase sejam coladas no arquivo.
                 </p>
               </div>
             </div>
-
             <button
-              onClick={handleSendAllTodayRemindersSummary}
-              className="w-full md:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black shadow-xs transition flex items-center justify-center space-x-2 shrink-0"
+              onClick={() => setShowSyncInfoModal(true)}
+              className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-amber-950 font-black rounded-xl text-xs shadow-xs"
             >
-              <MessageCircle className="w-4 h-4" />
-              <span>Enviar {todayAppointments.length} Lembretes do Dia (WhatsApp)</span>
+              Ver Passo a Passo para Ativar
             </button>
           </div>
         </div>
       )}
 
-      {/* Conteúdo Principal / Barra de Filtros & Busca */}
+      {/* Conteúdo Principal */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-        <div className="bg-white rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-200/80 mb-6 space-y-4 print:hidden">
+        <div className="bg-white rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-200/80 mb-6 space-y-4">
           
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             
-            {/* Alternar Abas (Próximas vs Histórico) */}
+            {/* Alternar Abas */}
             <div className="flex items-center bg-slate-100 p-1 rounded-2xl">
               <button
                 onClick={() => setViewMode('proximas')}
@@ -761,25 +711,43 @@ Agenda Familiar de Consultas`
 
           </div>
 
-          {/* Filtro por Paciente - GERADO DINAMICAMENTE A PARTIR DOS DADOS */}
+          {/* FILTRO DE PACIENTES */}
           <div className="flex items-center space-x-2 overflow-x-auto pt-2 pb-1 scrollbar-none text-left">
             <span className="text-xs font-bold text-slate-500 mr-1 shrink-0">Paciente:</span>
-            {['Todos', ...optionsList.clientes].map(patient => {
-              const theme = getPatientTheme(patient);
-              const isActive = selectedPatient === patient;
+            
+            <button
+              onClick={() => setSelectedPatient('Todos')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs transition shrink-0 border ${
+                selectedPatient === 'Todos'
+                  ? 'bg-slate-900 border-slate-900 text-white font-black shadow-xs'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              Todos
+            </button>
 
-              return (
-                <button
-                  key={patient}
-                  onClick={() => setSelectedPatient(patient)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs transition shrink-0 border ${
-                    isActive ? theme.filterActive : theme.filterInactive
-                  }`}
-                >
-                  {patient}
-                </button>
-              );
-            })}
+            {loading ? (
+              <span className="text-[11px] text-slate-400 italic font-medium px-2 py-1 bg-slate-50 rounded-lg">
+                Lendo lista de pacientes...
+              </span>
+            ) : (
+              optionsList.clientes.map(patient => {
+                const theme = getPatientTheme(patient);
+                const isActive = selectedPatient === patient;
+
+                return (
+                  <button
+                    key={patient}
+                    onClick={() => setSelectedPatient(patient)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs transition shrink-0 border ${
+                      isActive ? theme.filterActive : theme.filterInactive
+                    }`}
+                  >
+                    {patient}
+                  </button>
+                );
+              })
+            )}
           </div>
 
         </div>
@@ -788,16 +756,14 @@ Agenda Familiar de Consultas`
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400">
             <div className="w-8 h-8 border-4 border-amber-400 border-t-transparent rounded-full animate-spin mb-3"></div>
-            <p className="text-xs font-bold">Carregando consultas da nuvem...</p>
+            <p className="text-xs font-bold">Lendo consultas do arquivo...</p>
           </div>
         ) : filteredAppointments.length === 0 ? (
           <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 max-w-md mx-auto my-8">
             <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-3" />
             <h3 className="text-base font-bold text-slate-800">Nenhuma consulta encontrada</h3>
             <p className="text-xs text-slate-500 mt-1">
-              {viewMode === 'proximas' 
-                ? 'Não há próximos agendamentos cadastrados para o filtro selecionado.' 
-                : 'Nenhum histórico passado encontrado.'}
+              Não há agendamentos cadastrados para o filtro selecionado.
             </p>
             <button
               onClick={() => openModal()}
@@ -817,11 +783,9 @@ Agenda Familiar de Consultas`
                   key={appItem.id}
                   className={`relative p-6 rounded-3xl border shadow-sm transition hover:shadow-md ${theme.bg} flex flex-col justify-between text-left`}
                 >
-                  {/* Alfinete Visual no Post-it */}
                   <div className={`absolute -top-2.5 left-6 w-5 h-5 rounded-full ${theme.pin} shadow-md border-2 border-white`} />
 
                   <div>
-                    {/* Cabeçalho do Post-it */}
                     <div className="flex items-start justify-between gap-2 mb-4 text-left">
                       <div className="text-left">
                         <span className={`inline-block px-3 py-1 rounded-full text-xs font-black border mb-1.5 ${theme.badge}`}>
@@ -832,8 +796,7 @@ Agenda Familiar de Consultas`
                         </h2>
                       </div>
 
-                      {/* Ações Rápidas */}
-                      <div className="flex items-center space-x-1 print:hidden shrink-0">
+                      <div className="flex items-center space-x-1 shrink-0">
                         <button
                           onClick={() => openModal(appItem, true)}
                           className="p-1.5 hover:bg-emerald-500/15 rounded-lg text-emerald-800 transition flex items-center gap-1"
@@ -849,7 +812,7 @@ Agenda Familiar de Consultas`
                           <Edit3 className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(appItem.id)}
+                          onClick={() => setItemToDelete(appItem)}
                           className="p-1.5 hover:bg-rose-500/10 rounded-lg text-rose-700 transition"
                           title="Excluir Consulta"
                         >
@@ -858,9 +821,7 @@ Agenda Familiar de Consultas`
                       </div>
                     </div>
 
-                    {/* Detalhes da Consulta (ALINHADO À ESQUERDA) */}
                     <div className="space-y-2.5 text-xs text-left">
-                      
                       <div className="flex items-start space-x-2.5 text-left">
                         <User className="w-4 h-4 opacity-70 shrink-0 mt-0.5" />
                         <span className="text-left"><strong className="font-bold">Médico(a):</strong> {appItem.medico || 'Não informado'}</span>
@@ -888,18 +849,26 @@ Agenda Familiar de Consultas`
                         )}
                       </div>
 
-                      {appItem.observacoes && (
-                        <div className="mt-3 p-2.5 bg-black/5 rounded-xl text-[11px] italic text-left">
-                          "{appItem.observacoes}"
+                      {/* Exibição Destacada do Campo de Observações */}
+                      {appItem.observacoes ? (
+                        <div className="mt-3 p-3 bg-white/70 border border-black/10 rounded-2xl text-xs text-left space-y-1 shadow-2xs">
+                          <div className="flex items-center space-x-1.5 font-bold text-slate-800">
+                            <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>Observações:</span>
+                          </div>
+                          <p className="text-[11px] text-slate-700 leading-relaxed italic text-left pl-5">
+                            "{appItem.observacoes}"
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="mt-3 p-2 bg-black/5 rounded-xl text-[10px] italic text-slate-500 text-left">
+                          Sem observações registradas.
                         </div>
                       )}
-
                     </div>
                   </div>
 
-                  {/* Rodapé com Rota, Retorno e Lembretes */}
-                  <div className="mt-6 pt-4 border-t border-black/10 flex flex-col gap-2 print:hidden text-left">
-                    
+                  <div className="mt-6 pt-4 border-t border-black/10 flex flex-col gap-2 text-left">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <button
                         onClick={() => openGoogleMapsRoute(appItem.local, appItem.endereco)}
@@ -922,7 +891,6 @@ Agenda Familiar de Consultas`
                       <button
                         onClick={() => handleSendWhatsAppReminder(appItem)}
                         className="py-1.5 px-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center space-x-1"
-                        title="Enviar Lembrete por WhatsApp"
                       >
                         <MessageCircle className="w-3 h-3" />
                         <span>WhatsApp</span>
@@ -931,13 +899,11 @@ Agenda Familiar de Consultas`
                       <button
                         onClick={() => handleSendEmailReminder(appItem)}
                         className="py-1.5 px-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center space-x-1"
-                        title="Enviar Lembrete por E-mail"
                       >
                         <Mail className="w-3 h-3 text-amber-400" />
                         <span>E-mail</span>
                       </button>
                     </div>
-
                   </div>
 
                 </div>
@@ -947,7 +913,89 @@ Agenda Familiar de Consultas`
         )}
       </main>
 
-      {/* Modal de Cadastro / Edição / Retorno */}
+      {/* Modal de Confirmação de Exclusão */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl p-6 text-left space-y-4 border border-slate-100">
+            <div className="flex items-center space-x-3 text-rose-600 border-b pb-3">
+              <div className="p-2 bg-rose-100 rounded-2xl">
+                <Trash2 className="w-6 h-6 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Confirmar Exclusão</h3>
+                <p className="text-xs text-slate-500">Essa ação não pode ser desfeita.</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-700">
+              Tem certeza que deseja excluir o agendamento de <strong className="text-slate-900">{itemToDelete.especialidade}</strong> do(a) paciente <strong className="text-slate-900">{itemToDelete.cliente}</strong> no dia <strong>{formatDate(itemToDelete.dia)}</strong>?
+            </p>
+
+            <div className="flex items-center justify-end space-x-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setItemToDelete(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition"
+              >
+                Cancelar Exclusão
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDelete(itemToDelete.id)}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs shadow-xs transition"
+              >
+                Sim, Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Instruções de Sincronização na Nuvem */}
+      {showSyncInfoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl p-6 text-left space-y-4 border border-slate-100">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center space-x-2 text-amber-600">
+                <Cloud className="w-6 h-6" />
+                <h3 className="text-base font-bold text-slate-900">Como Ativar a Sincronização Celular/Notebook</h3>
+              </div>
+              <button onClick={() => setShowSyncInfoModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600">
+              Para que todos os aparelhos (computador e celulares da Tania, Oscar e Bruna) leiam e gravem as consultas em tempo real, siga estes 2 passos:
+            </p>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                <h4 className="font-bold text-slate-900 mb-1">1. Pegar as chaves no Firebase:</h4>
+                <p className="text-slate-600 text-[11px]">
+                  Acesse <strong>console.firebase.google.com</strong> &gt; Engrenagem ⚙️ &gt; Configurações do Projeto &gt; Role até o fim e copie o trecho <code>const firebaseConfig = ...</code>.
+                </p>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                <h4 className="font-bold text-slate-900 mb-1">2. Colar no topo do arquivo <code>App.jsx</code>:</h4>
+                <p className="text-slate-600 text-[11px]">
+                  Abra o arquivo <strong>App.jsx</strong> e substitua as chaves genéricas pelas suas chaves reais na linha 35.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowSyncInfoModal(false)}
+              className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition"
+            >
+              Entendido!
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Cadastro */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden my-8 border border-slate-100 text-left">
@@ -975,15 +1023,6 @@ Agenda Familiar de Consultas`
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs text-left">
               
-              {isReturnAppointment && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-900 text-xs font-medium flex items-center space-x-2">
-                  <RotateCcw className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>
-                    Os dados do médico e da clínica foram preenchidos. Escolha a **nova data**, **horário** e ajuste as **observações**.
-                  </span>
-                </div>
-              )}
-
               {/* Campo Paciente */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1 text-left">Paciente</label>
@@ -1052,7 +1091,7 @@ Agenda Familiar de Consultas`
                   <div className="flex items-center space-x-2">
                     <input
                       type="text"
-                      placeholder="Ex: Cardiologista, Pediatra..."
+                      placeholder="Ex: Cardiologista..."
                       value={formData.especialidade}
                       onChange={(e) => setFormData({ ...formData, especialidade: e.target.value })}
                       className="w-full p-2.5 bg-amber-50 border border-amber-300 rounded-xl font-bold text-left"
@@ -1118,15 +1157,8 @@ Agenda Familiar de Consultas`
                 {!isCustomLocal ? (
                   <select
                     value={formData.local}
-                    onChange={(e) => {
-                      if (e.target.value === 'NEW') {
-                        setIsCustomLocal(true);
-                        setFormData({ ...formData, local: '' });
-                      } else {
-                        setFormData({ ...formData, local: e.target.value });
-                      }
-                    }}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-left"
+                    onChange={(e) => handleClinicChange(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-left font-semibold"
                   >
                     <option value="">Selecione...</option>
                     {optionsList.locais.map(loc => (
@@ -1138,7 +1170,7 @@ Agenda Familiar de Consultas`
                   <div className="flex items-center space-x-2">
                     <input
                       type="text"
-                      placeholder="Nome da clínica ou consultório"
+                      placeholder="Nome da clínica"
                       value={formData.local}
                       onChange={(e) => setFormData({ ...formData, local: e.target.value })}
                       className="w-full p-2.5 bg-amber-50 border border-amber-300 rounded-xl font-bold text-left"
@@ -1155,10 +1187,12 @@ Agenda Familiar de Consultas`
                 )}
               </div>
 
-              {/* Campo Endereço da Clínica (com teste no Google Maps) */}
+              {/* Campo Endereço (Desabilitado / Automático quando a clínica já existe) */}
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="block font-bold text-slate-700 text-left">Endereço Completo</label>
+                  <label className="block font-bold text-slate-700 text-left">
+                    Endereço Completo {!isCustomLocal && formData.local && <span className="text-[10px] font-normal text-emerald-600">(Preenchido Automaticamente)</span>}
+                  </label>
                   {(formData.endereco || formData.local) && (
                     <button
                       type="button"
@@ -1172,10 +1206,15 @@ Agenda Familiar de Consultas`
                 </div>
                 <input
                   type="text"
-                  placeholder="Ex: Av. Francisco Glicério, 1867 - 9º andar, Campinas"
+                  placeholder={isCustomLocal ? "Digite o endereço da nova clínica..." : "Endereço associado à clínica"}
                   value={formData.endereco}
                   onChange={(e) => setFormData({ ...formData, endereco: e.target.value })}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-left"
+                  readOnly={!isCustomLocal && !!formData.local}
+                  className={`w-full p-2.5 rounded-xl text-left transition ${
+                    !isCustomLocal && formData.local 
+                      ? 'bg-slate-100/80 border border-slate-200 text-slate-600 cursor-not-allowed font-medium' 
+                      : 'bg-amber-50 border border-amber-300 text-slate-900 font-bold'
+                  }`}
                 />
               </div>
 
@@ -1186,10 +1225,11 @@ Agenda Familiar de Consultas`
                     Data {isReturnAppointment && <span className="text-emerald-700 font-black">(Foco Retorno)</span>}
                   </label>
                   <input
+                    ref={dateInputRef}
                     type="date"
                     value={formData.dia}
                     onChange={(e) => setFormData({ ...formData, dia: e.target.value })}
-                    className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-bold text-left"
+                    className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-bold text-left focus:ring-2 focus:ring-amber-400 focus:outline-none"
                     required
                     autoFocus={isReturnAppointment}
                   />
@@ -1209,7 +1249,7 @@ Agenda Familiar de Consultas`
               <div>
                 <label className="block font-bold text-slate-700 mb-1 text-left">Observações Adicionais</label>
                 <textarea
-                  placeholder="Instruções de jejum, documentos a levar, motivo do retorno..."
+                  placeholder="Instruções de jejum, documentos..."
                   value={formData.observacoes}
                   onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl h-20 text-left"
@@ -1277,7 +1317,7 @@ Agenda Familiar de Consultas`
         </div>
       )}
 
-      {/* Modal Guia de Instalação no Celular */}
+      {/* Modal Guia de Instalação */}
       {showInstallGuideModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
           <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl p-6 text-left space-y-4 border border-slate-100">
@@ -1299,7 +1339,6 @@ Agenda Familiar de Consultas`
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-              {/* iPhone */}
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
                 <div className="flex items-center space-x-2 font-bold text-slate-900">
                   <span className="p-1 bg-slate-200 rounded-md"></span>
@@ -1307,12 +1346,11 @@ Agenda Familiar de Consultas`
                 </div>
                 <ol className="list-decimal list-inside text-slate-600 space-y-1 text-[11px]">
                   <li>Abra este site no Safari.</li>
-                  <li>Toque no botão <strong>Compartilhar</strong> (ícone do quadrado com a seta para cima).</li>
-                  <li>Role para baixo e selecione <strong>Adicionar à Tela de Início</strong>.</li>
+                  <li>Toque no botão <strong>Compartilhar</strong>.</li>
+                  <li>Selecione <strong>Adicionar à Tela de Início</strong>.</li>
                 </ol>
               </div>
 
-              {/* Android */}
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
                 <div className="flex items-center space-x-2 font-bold text-slate-900">
                   <span className="p-1 bg-slate-200 rounded-md">🤖</span>
@@ -1320,26 +1358,10 @@ Agenda Familiar de Consultas`
                 </div>
                 <ol className="list-decimal list-inside text-slate-600 space-y-1 text-[11px]">
                   <li>Abra este site no Chrome.</li>
-                  <li>Toque no menu de <strong>3 pontinhos</strong> (canto superior direito).</li>
-                  <li>Selecione <strong>Adicionar à tela inicial</strong> ou <strong>Instalar aplicativo</strong>.</li>
+                  <li>Toque no menu de <strong>3 pontinhos</strong>.</li>
+                  <li>Selecione <strong>Adicionar à tela inicial</strong>.</li>
                 </ol>
               </div>
-            </div>
-
-            {/* Enviar Link no WhatsApp */}
-            <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-2">
-              <span className="text-xs font-bold text-indigo-950">Enviar o link para a família no WhatsApp</span>
-              <button
-                onClick={() => {
-                  const url = encodeURIComponent(window.location.href);
-                  const msg = encodeURIComponent(`Olá! Aqui está o link da nossa Agenda de Consultas Médicas para baixar no celular:\n\n${window.location.href}`);
-                  window.open(`https://api.whatsapp.com/send?text=${msg}`, '_blank');
-                }}
-                className="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center space-x-1 shrink-0"
-              >
-                <MessageCircle className="w-3.5 h-3.5" />
-                <span>Enviar no WhatsApp</span>
-              </button>
             </div>
 
             <button
@@ -1352,7 +1374,7 @@ Agenda Familiar de Consultas`
         </div>
       )}
 
-      {/* Modal de Notificações Automáticas com Opção de Envio Individual e Completo */}
+      {/* Modal Lembretes do Dia */}
       {showAutoNoticeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
           <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl p-6 text-center space-y-4 border border-slate-100 text-left">
@@ -1365,14 +1387,11 @@ Agenda Familiar de Consultas`
             {todayAppointments.length > 0 ? (
               <div className="space-y-4 text-left">
                 <p className="text-xs text-slate-600 text-center">
-                  Encontramos <strong className="text-slate-900">{todayAppointments.length} consultas pendentes</strong> para hoje. Escolha a melhor opção de envio:
+                  Encontramos <strong className="text-slate-900">{todayAppointments.length} consultas pendentes</strong> para hoje:
                 </p>
 
-                {/* Opção 1: Envio Geral Consolidado */}
                 <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-emerald-950">📋 Enviar Resumo Completo ({todayAppointments.length} Consultas)</span>
-                  </div>
+                  <span className="text-xs font-bold text-emerald-950">📋 Enviar Resumo Completo ({todayAppointments.length} Consultas)</span>
                   <p className="text-[11px] text-emerald-800">
                     Gera uma única mensagem contendo todas as consultas de hoje formatadas com links do Maps.
                   </p>
@@ -1383,26 +1402,6 @@ Agenda Familiar de Consultas`
                     <SendHorizontal className="w-4 h-4" />
                     <span>Enviar Resumo Completo no WhatsApp</span>
                   </button>
-                </div>
-
-                {/* Opção 2: Envio Individual por Consulta */}
-                <div className="text-left bg-slate-50 p-3.5 rounded-2xl border text-xs space-y-2">
-                  <span className="font-bold text-slate-700 block mb-1">Ou envie individualmente para cada paciente:</span>
-                  {todayAppointments.map((appItem, idx) => (
-                    <div key={appItem.id} className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200">
-                      <div>
-                        <span className="font-bold text-slate-900">{idx + 1}. {appItem.cliente}</span> 
-                        <span className="text-slate-500 block text-[11px]">{appItem.especialidade} às {appItem.hora}h</span>
-                      </div>
-                      <button
-                        onClick={() => handleSendWhatsAppReminder(appItem, true)}
-                        className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold rounded-lg flex items-center space-x-1 shrink-0"
-                      >
-                        <MessageCircle className="w-3.5 h-3.5" />
-                        <span>Enviar</span>
-                      </button>
-                    </div>
-                  ))}
                 </div>
               </div>
             ) : (
