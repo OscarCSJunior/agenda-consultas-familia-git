@@ -54,12 +54,14 @@ import {
 // ATENÇÃO: COLE AQUI SUAS CHAVE DE CONFIGURAÇÃO DO FIREBASE (PROJETO REAL)
 // ============================================================================
 const firebaseConfig = {
-  apiKey: "AIzaSyDummyKeyForMockSetup123456789",
-  authDomain: "consultas-medicas-app.firebaseapp.com",
-  projectId: "consultas-medicas-app",
-  storageBucket: "consultas-medicas-app.appspot.com",
-  messagingSenderId: "1234567890",
-  appId: "1:1234567890:web:abcdef123456"
+  apiKey: "AIzaSyCI1Uen8stm5p1qq-vzINMNNlmveCCxicc",
+  authDomain: "agenda-familia-4cf24.firebaseapp.com",
+  databaseURL: "https://agenda-familia-4cf24-default-rtdb.firebaseio.com",
+  projectId: "agenda-familia-4cf24",
+  storageBucket: "agenda-familia-4cf24.firebasestorage.app",
+  messagingSenderId: "439157932854",
+  appId: "1:439157932854:web:89e13abd2d38702d68a997",
+  measurementId: "G-EPXKEXQZ9G"
 };
 
 // Verifica se as chaves foram alteradas do padrão
