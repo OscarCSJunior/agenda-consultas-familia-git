@@ -56,13 +56,11 @@ import {
 const firebaseConfig = {
   apiKey: "AIzaSyCI1Uen8stm5p1qq-vzINMNNlmveCCxicc",
   authDomain: "agenda-familia-4cf24.firebaseapp.com",
-  databaseURL: "https://agenda-familia-4cf24-default-rtdb.firebaseio.com",
   projectId: "agenda-familia-4cf24",
   storageBucket: "agenda-familia-4cf24.firebasestorage.app",
   messagingSenderId: "439157932854",
   appId: "1:439157932854:web:89e13abd2d38702d68a997",
   measurementId: "G-EPXKEXQZ9G"
-};
 
 // Verifica se as chaves foram alteradas do padrão
 const isDummyConfig = firebaseConfig.apiKey.includes("DummyKey");
@@ -427,7 +425,6 @@ Agenda Familiar de Consultas`
     } else {
       setEditingId(null);
       const defaultLocal = optionsList.locais[0] || '';
-      // Busca o último endereço cadastrado para essa clínica padrão, se existir
       const existingAddress = defaultLocal 
         ? (appointments.find(a => a.local === defaultLocal && a.endereco)?.endereco || '')
         : '';
