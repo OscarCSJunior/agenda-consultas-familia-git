@@ -2,9 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { 
   getAuth, 
-  signInAnonymously, 
-  signInWithCustomToken, 
-  onAuthStateChanged 
+  signInAnonymously 
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -46,12 +44,11 @@ import {
   Cloud,
   CloudOff,
   AlertTriangle,
-  RefreshCw,
   FileText
 } from 'lucide-react';
 
 // ============================================================================
-// ATENÇÃO: COLE AQUI SUAS CHAVE DE CONFIGURAÇÃO DO FIREBASE (PROJETO REAL)
+// ATENÇÃO: COLE AQUI SUAS CHAVES DE CONFIGURAÇÃO DO FIREBASE (PROJETO REAL)
 // ============================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyCI1Uen8stm5p1qq-vzINMNNlmveCCxicc",
@@ -61,8 +58,8 @@ const firebaseConfig = {
   messagingSenderId: "439157932854",
   appId: "1:439157932854:web:89e13abd2d38702d68a997",
   measurementId: "G-EPXKEXQZ9G"
+};
 
-// Verifica se as chaves foram alteradas do padrão
 const isDummyConfig = firebaseConfig.apiKey.includes("DummyKey");
 
 let app, auth, db;
@@ -74,7 +71,7 @@ try {
   console.warn("Falha ao inicializar o Firebase SDK:", error);
 }
 
-const LOCAL_STORAGE_KEY = 'consultas_medicas_backup_data_v5';
+const LOCAL_STORAGE_KEY = 'consultas_medicas_backup_data_v6';
 
 const INITIAL_APPOINTMENTS = [
   { cliente: 'Tania', especialidade: 'Oftalmologista', medico: 'Luiz Fernando Pozzi', local: 'COH - Franceschini', endereco: 'Rua Franceschini, Campinas - SP', dia: '2026-10-31', hora: '00:00' },
@@ -95,22 +92,15 @@ const INITIAL_APPOINTMENTS = [
 export default function App() {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [isInitializing, setIsInitializing] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showAutoNoticeModal, setShowAutoNoticeModal] = useState(false);
   const [showInstallGuideModal, setShowInstallGuideModal] = useState(false);
   const [showSyncInfoModal, setShowSyncInfoModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   
-  // Referência para mover o foco para a Data da Consulta
   const dateInputRef = useRef(null);
-  
-  // Estado para Modal de Confirmação de Exclusão
   const [itemToDelete, setItemToDelete] = useState(null);
-  
-  // Status da Nuvem
   const [isCloudConnected, setIsCloudConnected] = useState(false);
-  const [connectionError, setConnectionError] = useState(null);
 
   const [viewMode, setViewMode] = useState('proximas'); 
   const [selectedPatient, setSelectedPatient] = useState('Todos');
@@ -148,11 +138,9 @@ export default function App() {
     observacoes: ''
   });
 
-  // Conectar ou recuar para armazenamento local
   useEffect(() => {
     if (isDummyConfig || !db || !auth) {
       setIsCloudConnected(false);
-      setConnectionError("As chaves reais do Firebase não foram coladas no arquivo App.jsx.");
       loadFromLocalStorage();
       return;
     }
@@ -162,8 +150,6 @@ export default function App() {
     const initFirebaseSync = async () => {
       try {
         await signInAnonymously(auth);
-        
-        // Conexão em Tempo Real
         const colRef = collection(db, 'consultas_familia');
         
         unsubscribeSnapshot = onSnapshot(colRef, 
@@ -176,24 +162,20 @@ export default function App() {
             if (data.length > 0) {
               setAppointments(data);
             } else {
-              // Se o banco online estiver vazio, popula com os dados base
               seedCloudDatabase(colRef);
             }
             setIsCloudConnected(true);
-            setConnectionError(null);
             setLoading(false);
           }, 
           (err) => {
             console.warn("Erro ao ler banco de dados do Firebase:", err);
             setIsCloudConnected(false);
-            setConnectionError(err.message);
             loadFromLocalStorage();
           }
         );
       } catch (err) {
         console.warn("Falha ao autenticar no Firebase:", err);
         setIsCloudConnected(false);
-        setConnectionError(err.message);
         loadFromLocalStorage();
       }
     };
@@ -324,30 +306,6 @@ _Tenha um ótimo atendimento!_`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(mensagem)}`, '_blank');
   };
 
-  const handleSendEmailReminder = (appItem) => {
-    const dataFormatada = formatDate(appItem.dia);
-    const horaFormatada = appItem.hora === '00:00' ? 'A confirmar' : `${appItem.hora}h`;
-    const localInfo = [appItem.local, appItem.endereco].filter(Boolean).join(' - ');
-
-    const assunto = encodeURIComponent(`Lembrete de Consulta Médica: ${appItem.especialidade} - ${appItem.cliente}`);
-    const corpo = encodeURIComponent(
-`Olá,
-
-Segue o lembrete da consulta agendada:
-
-• Paciente: ${appItem.cliente}
-• Especialidade: ${appItem.especialidade}
-• Médico(a): ${appItem.medico || 'Não informado'}
-• Data: ${dataFormatada} às ${horaFormatada}
-• Local: ${localInfo}
-
-Atenciosamente,
-Agenda Familiar de Consultas`
-    );
-
-    window.open(`mailto:?subject=${assunto}&body=${corpo}`, '_blank');
-  };
-
   const openGoogleMapsRoute = (local, endereco) => {
     const query = [local, endereco].filter(Boolean).join(', ');
     const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
@@ -443,14 +401,12 @@ Agenda Familiar de Consultas`
     setIsModalOpen(true);
   };
 
-  // Função para tratar a seleção da clínica, autopreenchendo endereço e mudando o foco para a data
   const handleClinicChange = (selectedLocal) => {
     if (selectedLocal === 'NEW') {
       setIsCustomLocal(true);
       setFormData(prev => ({ ...prev, local: '', endereco: '' }));
     } else {
       setIsCustomLocal(false);
-      // Localiza o endereço associado a esta clínica nos agendamentos
       const matchingApp = appointments.find(a => a.local === selectedLocal && a.endereco);
       const foundAddress = matchingApp ? matchingApp.endereco : '';
       
@@ -460,12 +416,64 @@ Agenda Familiar de Consultas`
         endereco: foundAddress 
       }));
 
-      // Move o foco diretamente para a Data da Consulta
       setTimeout(() => {
         if (dateInputRef.current) {
           dateInputRef.current.focus();
         }
       }, 50);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!isCloudConnected || !db) {
+      if (editingId) {
+        const updated = appointments.map(appItem => 
+          appItem.id === editingId ? { ...appItem, ...formData } : appItem
+        );
+        saveToLocalStorage(updated);
+      } else {
+        const newItem = {
+          ...formData,
+          id: `local-${Date.now()}`
+        };
+        saveToLocalStorage([newItem, ...appointments]);
+      }
+      setIsModalOpen(false);
+      return;
+    }
+
+    try {
+      if (editingId) {
+        const docRef = doc(db, 'consultas_familia', editingId);
+        await updateDoc(docRef, {
+          ...formData,
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        const colRef = collection(db, 'consultas_familia');
+        await addDoc(colRef, {
+          ...formData,
+          createdAt: new Date().toISOString()
+        });
+      }
+      setIsModalOpen(false);
+    } catch (err) {
+      console.warn("Salvando alteração localmente:", err.message);
+      if (editingId) {
+        const updated = appointments.map(appItem => 
+          appItem.id === editingId ? { ...appItem, ...formData } : appItem
+        );
+        saveToLocalStorage(updated);
+      } else {
+        const newItem = {
+          ...formData,
+          id: `local-${Date.now()}`
+        };
+        saveToLocalStorage([newItem, ...appointments]);
+      }
+      setIsModalOpen(false);
     }
   };
 
@@ -495,22 +503,6 @@ Agenda Familiar de Consultas`
     return `${day}/${month}/${year}`;
   };
 
-  const handleCopyShareLink = () => {
-    const shareUrl = window.location.href;
-    if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(shareUrl);
-    } else {
-      const textArea = document.createElement("textarea");
-      textArea.value = shareUrl;
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textArea);
-    }
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 3000);
-  };
-
   const getPatientTheme = (name) => {
     switch (name) {
       case 'Tania':
@@ -518,7 +510,7 @@ Agenda Familiar de Consultas`
           bg: 'bg-pink-100 border-pink-300 text-pink-950',
           pin: 'bg-rose-500',
           badge: 'bg-pink-200 text-pink-800 border-pink-300',
-          filterActive: 'bg-pink-200 border-pink-400 text-pink-900 font-black shadow-xs ring-2 ring-pink-400',
+          filterActive: 'bg-pink-200 border-pink-400 text-pink-900 font-black ring-2 ring-pink-400',
           filterInactive: 'bg-pink-50/80 text-pink-800 border-pink-200 hover:bg-pink-100',
         };
       case 'Oscar':
@@ -526,7 +518,7 @@ Agenda Familiar de Consultas`
           bg: 'bg-amber-100 border-amber-300 text-amber-950',
           pin: 'bg-amber-500',
           badge: 'bg-amber-200 text-amber-900 border-amber-300',
-          filterActive: 'bg-amber-200 border-amber-400 text-amber-950 font-black shadow-xs ring-2 ring-amber-400',
+          filterActive: 'bg-amber-200 border-amber-400 text-amber-950 font-black ring-2 ring-amber-400',
           filterInactive: 'bg-amber-50/80 text-amber-800 border-amber-200 hover:bg-amber-100',
         };
       case 'Bruna':
@@ -534,7 +526,7 @@ Agenda Familiar de Consultas`
           bg: 'bg-purple-100 border-purple-300 text-purple-950',
           pin: 'bg-purple-500',
           badge: 'bg-purple-200 text-purple-900 border-purple-300',
-          filterActive: 'bg-purple-200 border-purple-400 text-purple-950 font-black shadow-xs ring-2 ring-purple-400',
+          filterActive: 'bg-purple-200 border-purple-400 text-purple-950 font-black ring-2 ring-purple-400',
           filterInactive: 'bg-purple-50/80 text-purple-800 border-purple-200 hover:bg-purple-100',
         };
       default:
@@ -542,7 +534,7 @@ Agenda Familiar de Consultas`
           bg: 'bg-emerald-100 border-emerald-300 text-emerald-950',
           pin: 'bg-emerald-500',
           badge: 'bg-emerald-200 text-emerald-900 border-emerald-300',
-          filterActive: 'bg-emerald-200 border-emerald-400 text-emerald-950 font-black shadow-xs ring-2 ring-emerald-400',
+          filterActive: 'bg-emerald-200 border-emerald-400 text-emerald-950 font-black ring-2 ring-emerald-400',
           filterInactive: 'bg-emerald-50/80 text-emerald-800 border-emerald-200 hover:bg-emerald-100',
         };
     }
@@ -566,7 +558,6 @@ Agenda Familiar de Consultas`
                   </span>
                 </h1>
                 
-                {/* STATUS DA CONEXÃO DE SINCRONIZAÇÃO DA NUVEM */}
                 <button 
                   onClick={() => setShowSyncInfoModal(true)}
                   className="mt-1 flex items-center gap-1.5 text-xs text-left cursor-pointer hover:opacity-80 transition"
@@ -579,28 +570,17 @@ Agenda Familiar de Consultas`
                   ) : (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
                       <AlertTriangle className="w-3 h-3 text-amber-400" />
-                      Salvo Apenas Neste Aparelho (Clique para Ativar)
+                      Salvo Apenas Neste Aparelho
                     </span>
                   )}
                 </button>
               </div>
             </div>
 
-            {/* Ações Rápidas */}
             <div className="flex items-center space-x-2 w-full sm:w-auto justify-end flex-wrap gap-y-2">
               <button
-                onClick={() => setShowSyncInfoModal(true)}
-                className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-xs ${
-                  isCloudConnected ? 'bg-emerald-800/60 text-emerald-200 border border-emerald-600' : 'bg-amber-600 text-white font-black animate-pulse'
-                }`}
-              >
-                {isCloudConnected ? <Cloud className="w-4 h-4 text-emerald-300" /> : <CloudOff className="w-4 h-4" />}
-                <span>{isCloudConnected ? 'Nuvem OK' : 'Ativar Nuvem'}</span>
-              </button>
-
-              <button
                 onClick={() => setShowInstallGuideModal(true)}
-                className="flex items-center space-x-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-xs"
+                className="flex items-center space-x-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition"
               >
                 <Smartphone className="w-4 h-4" />
                 <span>Baixar no Celular</span>
@@ -608,7 +588,7 @@ Agenda Familiar de Consultas`
 
               <button
                 onClick={() => setShowAutoNoticeModal(true)}
-                className="relative flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs"
+                className="relative flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition"
               >
                 <BellRing className="w-4 h-4" />
                 <span>Notificar Hoje</span>
@@ -621,7 +601,7 @@ Agenda Familiar de Consultas`
 
               <button
                 onClick={() => openModal()}
-                className="flex items-center space-x-1.5 px-4 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 rounded-xl text-xs font-black shadow-xs transition transform active:scale-95"
+                className="flex items-center space-x-1.5 px-4 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 rounded-xl text-xs font-black transition"
               >
                 <Plus className="w-4 h-4" />
                 <span>Novo Post-it</span>
@@ -632,36 +612,10 @@ Agenda Familiar de Consultas`
         </div>
       </header>
 
-      {/* Alerta de Desconexão da Nuvem */}
-      {!isCloudConnected && !loading && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
-          <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 shadow-xs flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center space-x-3 text-left">
-              <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0" />
-              <div className="text-left">
-                <h4 className="text-xs font-black text-amber-950">A Sincronização entre Notebook e Celular não está ativa!</h4>
-                <p className="text-[11px] text-amber-800">
-                  Os dados digitados neste aparelho não aparecerão no celular dos outros familiares até que as chaves reais do Firebase sejam coladas no arquivo.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowSyncInfoModal(true)}
-              className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-amber-950 font-black rounded-xl text-xs shadow-xs"
-            >
-              Ver Passo a Passo para Ativar
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Conteúdo Principal */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
         <div className="bg-white rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-200/80 mb-6 space-y-4">
           
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            
-            {/* Alternar Abas */}
             <div className="flex items-center bg-slate-100 p-1 rounded-2xl">
               <button
                 onClick={() => setViewMode('proximas')}
@@ -688,7 +642,6 @@ Agenda Familiar de Consultas`
               </button>
             </div>
 
-            {/* Pesquisa */}
             <div className="relative flex-1 max-w-md text-left">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
@@ -707,10 +660,8 @@ Agenda Familiar de Consultas`
                 </button>
               )}
             </div>
-
           </div>
 
-          {/* FILTRO DE PACIENTES */}
           <div className="flex items-center space-x-2 overflow-x-auto pt-2 pb-1 scrollbar-none text-left">
             <span className="text-xs font-bold text-slate-500 mr-1 shrink-0">Paciente:</span>
             
@@ -718,7 +669,7 @@ Agenda Familiar de Consultas`
               onClick={() => setSelectedPatient('Todos')}
               className={`px-3.5 py-1.5 rounded-xl text-xs transition shrink-0 border ${
                 selectedPatient === 'Todos'
-                  ? 'bg-slate-900 border-slate-900 text-white font-black shadow-xs'
+                  ? 'bg-slate-900 border-slate-900 text-white font-black'
                   : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
               }`}
             >
@@ -751,7 +702,6 @@ Agenda Familiar de Consultas`
 
         </div>
 
-        {/* Lista de Post-its */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400">
             <div className="w-8 h-8 border-4 border-amber-400 border-t-transparent rounded-full animate-spin mb-3"></div>
@@ -766,7 +716,7 @@ Agenda Familiar de Consultas`
             </p>
             <button
               onClick={() => openModal()}
-              className="mt-4 px-4 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 rounded-xl text-xs font-black shadow-xs transition"
+              className="mt-4 px-4 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 rounded-xl text-xs font-black transition"
             >
               Criar Novo Agendamento
             </button>
@@ -780,7 +730,7 @@ Agenda Familiar de Consultas`
               return (
                 <div
                   key={appItem.id}
-                  className={`relative p-6 rounded-3xl border shadow-sm transition hover:shadow-md ${theme.bg} flex flex-col justify-between text-left`}
+                  className={`relative p-6 rounded-3xl border shadow-xs transition hover:shadow-md ${theme.bg} flex flex-col justify-between text-left`}
                 >
                   <div className={`absolute -top-2.5 left-6 w-5 h-5 rounded-full ${theme.pin} shadow-md border-2 border-white`} />
 
@@ -798,7 +748,7 @@ Agenda Familiar de Consultas`
                       <div className="flex items-center space-x-1 shrink-0">
                         <button
                           onClick={() => openModal(appItem, true)}
-                          className="p-1.5 hover:bg-emerald-500/15 rounded-lg text-emerald-800 transition flex items-center gap-1"
+                          className="p-1.5 hover:bg-emerald-500/15 rounded-lg text-emerald-800 transition"
                           title="Agendar Retorno"
                         >
                           <RotateCcw className="w-4 h-4 text-emerald-700" />
@@ -848,7 +798,6 @@ Agenda Familiar de Consultas`
                         )}
                       </div>
 
-                      {/* Exibição Destacada do Campo de Observações */}
                       {appItem.observacoes ? (
                         <div className="mt-3 p-3 bg-white/70 border border-black/10 rounded-2xl text-xs text-left space-y-1 shadow-2xs">
                           <div className="flex items-center space-x-1.5 font-bold text-slate-800">
@@ -871,7 +820,7 @@ Agenda Familiar de Consultas`
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <button
                         onClick={() => openGoogleMapsRoute(appItem.local, appItem.endereco)}
-                        className="w-full py-2 px-3 bg-white/80 hover:bg-white text-slate-900 rounded-xl text-xs font-bold shadow-xs transition flex items-center justify-center space-x-1.5 border border-black/10"
+                        className="w-full py-2 px-3 bg-white/80 hover:bg-white text-slate-900 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 border border-black/10"
                       >
                         <Navigation className="w-3.5 h-3.5 text-blue-600" />
                         <span>Ver Rota no Maps</span>
@@ -879,30 +828,20 @@ Agenda Familiar de Consultas`
 
                       <button
                         onClick={() => openModal(appItem, true)}
-                        className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center justify-center space-x-1.5"
+                        className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                         <span>Agendar Retorno</span>
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => handleSendWhatsAppReminder(appItem)}
-                        className="py-1.5 px-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center space-x-1"
-                      >
-                        <MessageCircle className="w-3 h-3" />
-                        <span>WhatsApp</span>
-                      </button>
-
-                      <button
-                        onClick={() => handleSendEmailReminder(appItem)}
-                        className="py-1.5 px-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center space-x-1"
-                      >
-                        <Mail className="w-3 h-3 text-amber-400" />
-                        <span>E-mail</span>
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => handleSendWhatsAppReminder(appItem)}
+                      className="w-full py-2 px-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      <span>Enviar no WhatsApp</span>
+                    </button>
                   </div>
 
                 </div>
@@ -927,7 +866,7 @@ Agenda Familiar de Consultas`
             </div>
 
             <p className="text-xs text-slate-700">
-              Tem certeza que deseja excluir o agendamento de <strong className="text-slate-900">{itemToDelete.especialidade}</strong> do(a) paciente <strong className="text-slate-900">{itemToDelete.cliente}</strong> no dia <strong>{formatDate(itemToDelete.dia)}</strong>?
+              Tem certeza que deseja excluir a consulta de <strong className="text-slate-900">{itemToDelete.especialidade}</strong> do(a) paciente <strong className="text-slate-900">{itemToDelete.cliente}</strong> no dia <strong>{formatDate(itemToDelete.dia)}</strong>?
             </p>
 
             <div className="flex items-center justify-end space-x-2 pt-2">
@@ -941,7 +880,7 @@ Agenda Familiar de Consultas`
               <button
                 type="button"
                 onClick={() => handleDelete(itemToDelete.id)}
-                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs shadow-xs transition"
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs transition"
               >
                 Sim, Excluir
               </button>
@@ -950,42 +889,48 @@ Agenda Familiar de Consultas`
         </div>
       )}
 
-      {/* Modal de Instruções de Sincronização na Nuvem */}
-      {showSyncInfoModal && (
+      {/* Modal Guia de Instalação */}
+      {showInstallGuideModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
           <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl p-6 text-left space-y-4 border border-slate-100">
             <div className="flex items-center justify-between border-b pb-3">
-              <div className="flex items-center space-x-2 text-amber-600">
-                <Cloud className="w-6 h-6" />
-                <h3 className="text-base font-bold text-slate-900">Como Ativar a Sincronização Celular/Notebook</h3>
+              <div className="flex items-center space-x-2 text-indigo-600">
+                <Smartphone className="w-6 h-6" />
+                <h3 className="text-base font-bold text-slate-900">Como Baixar o App no Celular</h3>
               </div>
-              <button onClick={() => setShowSyncInfoModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setShowInstallGuideModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-600">
-              Para que todos os aparelhos (computador e celulares da Tania, Oscar e Bruna) leiam e gravem as consultas em tempo real, siga estes 2 passos:
-            </p>
-
-            <div className="space-y-3 text-xs">
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl">
-                <h4 className="font-bold text-slate-900 mb-1">1. Pegar as chaves no Firebase:</h4>
-                <p className="text-slate-600 text-[11px]">
-                  Acesse <strong>console.firebase.google.com</strong> &gt; Engrenagem ⚙️ &gt; Configurações do Projeto &gt; Role até o fim e copie o trecho <code>const firebaseConfig = ...</code>.
-                </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                <div className="flex items-center space-x-2 font-bold text-slate-900">
+                  <span className="p-1 bg-slate-200 rounded-md"></span>
+                  <span>iPhone (Safari)</span>
+                </div>
+                <ol className="list-decimal list-inside text-slate-600 space-y-1 text-[11px]">
+                  <li>Abra este site no Safari.</li>
+                  <li>Toque no botão <strong>Compartilhar</strong>.</li>
+                  <li>Selecione <strong>Adicionar à Tela de Início</strong>.</li>
+                </ol>
               </div>
 
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl">
-                <h4 className="font-bold text-slate-900 mb-1">2. Colar no topo do arquivo <code>App.jsx</code>:</h4>
-                <p className="text-slate-600 text-[11px]">
-                  Abra o arquivo <strong>App.jsx</strong> e substitua as chaves genéricas pelas suas chaves reais na linha 35.
-                </p>
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                <div className="flex items-center space-x-2 font-bold text-slate-900">
+                  <span className="p-1 bg-slate-200 rounded-md">🤖</span>
+                  <span>Android (Chrome)</span>
+                </div>
+                <ol className="list-decimal list-inside text-slate-600 space-y-1 text-[11px]">
+                  <li>Abra este site no Chrome.</li>
+                  <li>Toque no menu de <strong>3 pontinhos</strong>.</li>
+                  <li>Selecione <strong>Adicionar à tela inicial</strong>.</li>
+                </ol>
               </div>
             </div>
 
             <button
-              onClick={() => setShowSyncInfoModal(false)}
+              onClick={() => setShowInstallGuideModal(false)}
               className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition"
             >
               Entendido!
@@ -994,7 +939,50 @@ Agenda Familiar de Consultas`
         </div>
       )}
 
-      {/* Modal de Cadastro */}
+      {/* Modal de Lembretes do Dia */}
+      {showAutoNoticeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl p-6 text-center space-y-4 border border-slate-100 text-left">
+            <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center mx-auto">
+              <BellRing className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-base font-bold text-slate-900 text-center">Lembretes do Dia no WhatsApp</h3>
+            
+            {todayAppointments.length > 0 ? (
+              <div className="space-y-4 text-left">
+                <p className="text-xs text-slate-600 text-center">
+                  Encontramos <strong className="text-slate-900">{todayAppointments.length} consultas pendentes</strong> para hoje:
+                </p>
+
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                  <span className="text-xs font-bold text-emerald-950">📋 Enviar Resumo Completo ({todayAppointments.length} Consultas)</span>
+                  <button
+                    onClick={handleSendAllTodayRemindersSummary}
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-2 transition"
+                  >
+                    <SendHorizontal className="w-4 h-4" />
+                    <span>Enviar Resumo Completo no WhatsApp</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500 py-4 text-center">
+                Não existem consultas médicas agendadas para a data de hoje ({formatDate(todayStr)}).
+              </p>
+            )}
+
+            <button
+              onClick={() => setShowAutoNoticeModal(false)}
+              className="w-full py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Form / Cadastro */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden my-8 border border-slate-100 text-left">
@@ -1022,7 +1010,6 @@ Agenda Familiar de Consultas`
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs text-left">
               
-              {/* Campo Paciente */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1 text-left">Paciente</label>
                 {!isCustomCliente ? (
@@ -1064,7 +1051,6 @@ Agenda Familiar de Consultas`
                 )}
               </div>
 
-              {/* Campo Especialidade */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1 text-left">Especialidade Médica</label>
                 {!isCustomEspecialidade ? (
@@ -1107,7 +1093,6 @@ Agenda Familiar de Consultas`
                 )}
               </div>
 
-              {/* Campo Médico */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1 text-left">Nome do Médico(a)</label>
                 {!isCustomMedico ? (
@@ -1150,7 +1135,6 @@ Agenda Familiar de Consultas`
                 )}
               </div>
 
-              {/* Campo Nome da Clínica */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1 text-left">Nome da Clínica / Hospital</label>
                 {!isCustomLocal ? (
@@ -1186,26 +1170,15 @@ Agenda Familiar de Consultas`
                 )}
               </div>
 
-              {/* Campo Endereço (Desabilitado / Automático quando a clínica já existe) */}
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <label className="block font-bold text-slate-700 text-left">
-                    Endereço Completo {!isCustomLocal && formData.local && <span className="text-[10px] font-normal text-emerald-600">(Preenchido Automaticamente)</span>}
+                    Endereço Completo {!isCustomLocal && formData.local && <span className="text-[10px] font-normal text-emerald-600">(Preenchido Automático)</span>}
                   </label>
-                  {(formData.endereco || formData.local) && (
-                    <button
-                      type="button"
-                      onClick={() => openGoogleMapsRoute(formData.local, formData.endereco)}
-                      className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center space-x-1"
-                    >
-                      <SearchCheck className="w-3.5 h-3.5" />
-                      <span>Testar no Maps</span>
-                    </button>
-                  )}
                 </div>
                 <input
                   type="text"
-                  placeholder={isCustomLocal ? "Digite o endereço da nova clínica..." : "Endereço associado à clínica"}
+                  placeholder={isCustomLocal ? "Digite o endereço da nova clínica..." : "Endereço da clínica"}
                   value={formData.endereco}
                   onChange={(e) => setFormData({ ...formData, endereco: e.target.value })}
                   readOnly={!isCustomLocal && !!formData.local}
@@ -1217,12 +1190,9 @@ Agenda Familiar de Consultas`
                 />
               </div>
 
-              {/* Data e Horário */}
-              <div className={`grid grid-cols-2 gap-3 p-3 rounded-2xl transition ${isReturnAppointment ? 'bg-emerald-100/60 border border-emerald-300' : ''}`}>
+              <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-2xl">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1 text-left">
-                    Data {isReturnAppointment && <span className="text-emerald-700 font-black">(Foco Retorno)</span>}
-                  </label>
+                  <label className="block font-bold text-slate-700 mb-1 text-left">Data da Consulta</label>
                   <input
                     ref={dateInputRef}
                     type="date"
@@ -1230,7 +1200,6 @@ Agenda Familiar de Consultas`
                     onChange={(e) => setFormData({ ...formData, dia: e.target.value })}
                     className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-bold text-left focus:ring-2 focus:ring-amber-400 focus:outline-none"
                     required
-                    autoFocus={isReturnAppointment}
                   />
                 </div>
                 <div>
@@ -1244,7 +1213,6 @@ Agenda Familiar de Consultas`
                 </div>
               </div>
 
-              {/* Observações */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1 text-left">Observações Adicionais</label>
                 <textarea
@@ -1255,7 +1223,6 @@ Agenda Familiar de Consultas`
                 />
               </div>
 
-              {/* Botões do Formulário */}
               <div className="flex justify-end space-x-2 pt-4">
                 <button
                   type="button"
@@ -1266,11 +1233,7 @@ Agenda Familiar de Consultas`
                 </button>
                 <button
                   type="submit"
-                  className={`px-5 py-2 font-black rounded-xl shadow-xs ${
-                    isReturnAppointment 
-                      ? 'bg-emerald-500 hover:bg-emerald-600 text-white' 
-                      : 'bg-amber-400 hover:bg-amber-500 text-amber-950'
-                  }`}
+                  className="px-5 py-2 font-black rounded-xl bg-amber-400 hover:bg-amber-500 text-amber-950 transition"
                 >
                   {isReturnAppointment ? 'Confirmar Retorno' : editingId ? 'Salvar Alterações' : 'Criar Post-it'}
                 </button>
@@ -1278,143 +1241,6 @@ Agenda Familiar de Consultas`
 
             </form>
 
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Compartilhamento */}
-      {showShareModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl p-6 text-center space-y-4 border border-slate-100">
-            <div className="w-12 h-12 bg-amber-100 text-amber-900 rounded-2xl flex items-center justify-center mx-auto">
-              <Share2 className="w-6 h-6" />
-            </div>
-            
-            <h3 className="text-base font-bold text-slate-900">Compartilhar Agenda da Família</h3>
-            <p className="text-xs text-slate-600">
-              Qualquer pessoa com este link pode acessar e visualizar as consultas médicas sincronizadas em tempo real.
-            </p>
-
-            <div className="p-3 bg-slate-100 rounded-2xl flex items-center justify-between text-xs">
-              <span className="truncate max-w-[240px] text-slate-500 font-mono">{window.location.href}</span>
-              <button
-                onClick={handleCopyShareLink}
-                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold flex items-center space-x-1 shrink-0"
-              >
-                {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedLink ? 'Copiado!' : 'Copiar'}</span>
-              </button>
-            </div>
-
-            <button
-              onClick={() => setShowShareModal(false)}
-              className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition"
-            >
-              Fechar
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Guia de Instalação */}
-      {showInstallGuideModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl p-6 text-left space-y-4 border border-slate-100">
-            <div className="flex items-center justify-between border-b pb-3">
-              <div className="flex items-center space-x-2 text-indigo-600">
-                <Smartphone className="w-6 h-6" />
-                <h3 className="text-base font-bold text-slate-900">Como Baixar o App no Celular</h3>
-              </div>
-              <button 
-                onClick={() => setShowInstallGuideModal(false)}
-                className="text-slate-400 hover:text-slate-600 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-600">
-              Siga os passos abaixo no navegador do celular de cada pessoa da família para criar o ícone de atalho na tela inicial:
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-                <div className="flex items-center space-x-2 font-bold text-slate-900">
-                  <span className="p-1 bg-slate-200 rounded-md"></span>
-                  <span>iPhone (Safari)</span>
-                </div>
-                <ol className="list-decimal list-inside text-slate-600 space-y-1 text-[11px]">
-                  <li>Abra este site no Safari.</li>
-                  <li>Toque no botão <strong>Compartilhar</strong>.</li>
-                  <li>Selecione <strong>Adicionar à Tela de Início</strong>.</li>
-                </ol>
-              </div>
-
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-                <div className="flex items-center space-x-2 font-bold text-slate-900">
-                  <span className="p-1 bg-slate-200 rounded-md">🤖</span>
-                  <span>Android (Chrome)</span>
-                </div>
-                <ol className="list-decimal list-inside text-slate-600 space-y-1 text-[11px]">
-                  <li>Abra este site no Chrome.</li>
-                  <li>Toque no menu de <strong>3 pontinhos</strong>.</li>
-                  <li>Selecione <strong>Adicionar à tela inicial</strong>.</li>
-                </ol>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setShowInstallGuideModal(false)}
-              className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition"
-            >
-              Entendido!
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Lembretes do Dia */}
-      {showAutoNoticeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl p-6 text-center space-y-4 border border-slate-100 text-left">
-            <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center mx-auto">
-              <BellRing className="w-6 h-6" />
-            </div>
-
-            <h3 className="text-base font-bold text-slate-900 text-center">Lembretes do Dia no WhatsApp</h3>
-            
-            {todayAppointments.length > 0 ? (
-              <div className="space-y-4 text-left">
-                <p className="text-xs text-slate-600 text-center">
-                  Encontramos <strong className="text-slate-900">{todayAppointments.length} consultas pendentes</strong> para hoje:
-                </p>
-
-                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
-                  <span className="text-xs font-bold text-emerald-950">📋 Enviar Resumo Completo ({todayAppointments.length} Consultas)</span>
-                  <p className="text-[11px] text-emerald-800">
-                    Gera uma única mensagem contendo todas as consultas de hoje formatadas com links do Maps.
-                  </p>
-                  <button
-                    onClick={handleSendAllTodayRemindersSummary}
-                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-2 shadow-xs transition"
-                  >
-                    <SendHorizontal className="w-4 h-4" />
-                    <span>Enviar Resumo Completo no WhatsApp</span>
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <p className="text-xs text-slate-500 py-4 text-center">
-                Não existem consultas médicas agendadas para a data de hoje ({formatDate(todayStr)}).
-              </p>
-            )}
-
-            <button
-              onClick={() => setShowAutoNoticeModal(false)}
-              className="w-full py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition"
-            >
-              Fechar
-            </button>
           </div>
         </div>
       )}
