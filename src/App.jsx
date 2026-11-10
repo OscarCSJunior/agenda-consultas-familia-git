@@ -63,10 +63,6 @@ const firebaseConfig = {
   measurementId: "G-EPXKEXQZ9G"
 };
 
-/ Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-
 const isDummyConfig = firebaseConfig.apiKey.includes("DummyKey");
 
 let app, auth, db;
