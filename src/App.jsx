@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAnalytics } from "firebase/analytics";
 import { 
   getAuth, 
   signInAnonymously 
@@ -44,21 +45,27 @@ import {
   Cloud,
   CloudOff,
   AlertTriangle,
-  FileText
+  FileText,
+  Activity
 } from 'lucide-react';
 
 // ============================================================================
-// ATENÇÃO: COLE AQUI SUAS CHAVES DE CONFIGURAÇÃO DO FIREBASE (PROJETO REAL)
+// ATENÇÃO: SUSTITUA ABAIXO PELAS SUAS CHAVES DO CONSOLE DO FIREBASE
 // ============================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyCI1Uen8stm5p1qq-vzINMNNlmveCCxicc",
   authDomain: "agenda-familia-4cf24.firebaseapp.com",
+  databaseURL: "https://agenda-familia-4cf24-default-rtdb.firebaseio.com",
   projectId: "agenda-familia-4cf24",
   storageBucket: "agenda-familia-4cf24.firebasestorage.app",
   messagingSenderId: "439157932854",
   appId: "1:439157932854:web:89e13abd2d38702d68a997",
   measurementId: "G-EPXKEXQZ9G"
 };
+
+/ Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 
 const isDummyConfig = firebaseConfig.apiKey.includes("DummyKey");
 
@@ -71,22 +78,22 @@ try {
   console.warn("Falha ao inicializar o Firebase SDK:", error);
 }
 
-const LOCAL_STORAGE_KEY = 'consultas_medicas_backup_data_v6';
+const LOCAL_STORAGE_KEY = 'consultas_medicas_backup_data_v7';
 
 const INITIAL_APPOINTMENTS = [
-  { cliente: 'Tania', especialidade: 'Oftalmologista', medico: 'Luiz Fernando Pozzi', local: 'COH - Franceschini', endereco: 'Rua Franceschini, Campinas - SP', dia: '2026-10-31', hora: '00:00' },
-  { cliente: 'Oscar', especialidade: 'Exame', medico: 'sem nome', local: 'DMS Burnier', endereco: 'Av. Dr. Alberto Sarmento, Campinas - SP', dia: '2026-11-02', hora: '09:00' },
-  { cliente: 'Bruna', especialidade: 'Podologa', medico: 'Lucineia Dias', local: 'Podoclinica', endereco: 'Podoclinica, Campinas - SP', dia: '2026-11-03', hora: '10:00' },
-  { cliente: 'Tania', especialidade: 'Cardiologista', medico: 'Alexandre', local: 'Amanda', endereco: 'Clinica Amanda, Campinas - SP', dia: '2026-11-03', hora: '14:50' },
-  { cliente: 'Oscar', especialidade: 'Otorrinolaringologista', medico: 'Danila', local: 'Unison', endereco: 'Clinica Unison, Campinas - SP', dia: '2026-11-07', hora: '09:00' },
-  { cliente: 'Tania', especialidade: 'Acupuntura', medico: 'Dr. Tadeu', local: 'white', endereco: 'Clinica White, Campinas - SP', dia: '2026-11-09', hora: '17:00' },
-  { cliente: 'Tania', especialidade: 'Alergologista', medico: 'Caludia Leite', local: 'Pro Vida', endereco: 'Clinica Pro Vida, Campinas - SP', dia: '2026-11-11', hora: '09:00' },
-  { cliente: 'Tania', especialidade: 'Dentista', medico: 'Sarah/Caio', local: 'ICS', endereco: 'ICS Odontologia, Campinas - SP', dia: '2026-11-12', hora: '10:30' },
-  { cliente: 'Oscar', especialidade: 'Endocrino', medico: 'Dr Bradley', local: 'white', endereco: 'Clinica White, Campinas - SP', dia: '2026-11-16', hora: '00:00' },
-  { cliente: 'Tania', especialidade: 'Endocrino', medico: 'Dr Bradley', local: 'white', endereco: 'Clinica White, Campinas - SP', dia: '2026-11-16', hora: '15:40' },
-  { cliente: 'Bruna', especialidade: 'Psiquiatria', medico: 'André Akamini', local: 'Fco Glicerio', endereco: 'Av. Fco Glicerio, 1867 - 9ºandar - sala 92, Campinas - SP', dia: '2026-11-25', hora: '10:40' },
-  { cliente: 'Tania', especialidade: 'Ginecologista', medico: 'Dr. Francisco', local: 'Clinmed', endereco: 'Clinica Clinmed, Campinas - SP', dia: '2026-11-30', hora: '11:45' },
-  { cliente: 'Bruna', especialidade: 'Reumatologista', medico: 'Marina', local: 'Especialidades', endereco: 'Centro de Especialidades, Campinas - SP', dia: '2027-01-08', hora: '10:20' }
+  { cliente: 'Tania', especialidade: 'Oftalmologista', medico: 'Luiz Fernando Pozzi', local: 'COH - Franceschini', endereco: 'Rua Franceschini, Campinas - SP', dia: '2026-10-31', hora: '00:00', observacoes: '' },
+  { cliente: 'Oscar', especialidade: 'Exame', medico: 'sem nome', local: 'DMS Burnier', endereco: 'Av. Dr. Alberto Sarmento, Campinas - SP', dia: '2026-11-02', hora: '09:00', observacoes: '' },
+  { cliente: 'Bruna', especialidade: 'Podologa', medico: 'Lucineia Dias', local: 'Podoclinica', endereco: 'Podoclinica, Campinas - SP', dia: '2026-11-03', hora: '10:00', observacoes: '' },
+  { cliente: 'Tania', especialidade: 'Cardiologista', medico: 'Alexandre', local: 'Amanda', endereco: 'Clinica Amanda, Campinas - SP', dia: '2026-11-03', hora: '14:50', observacoes: '' },
+  { cliente: 'Oscar', especialidade: 'Otorrinolaringologista', medico: 'Danila', local: 'Unison', endereco: 'Clinica Unison, Campinas - SP', dia: '2026-11-07', hora: '09:00', observacoes: '' },
+  { cliente: 'Tania', especialidade: 'Acupuntura', medico: 'Dr. Tadeu', local: 'white', endereco: 'Clinica White, Campinas - SP', dia: '2026-11-09', hora: '17:00', observacoes: '' },
+  { cliente: 'Tania', especialidade: 'Alergologista', medico: 'Caludia Leite', local: 'Pro Vida', endereco: 'Clinica Pro Vida, Campinas - SP', dia: '2026-11-11', hora: '09:00', observacoes: '' },
+  { cliente: 'Tania', especialidade: 'Dentista', medico: 'Sarah/Caio', local: 'ICS', endereco: 'ICS Odontologia, Campinas - SP', dia: '2026-11-12', hora: '10:30', observacoes: '' },
+  { cliente: 'Oscar', especialidade: 'Endocrino', medico: 'Dr Bradley', local: 'white', endereco: 'Clinica White, Campinas - SP', dia: '2026-11-16', hora: '00:00', observacoes: '' },
+  { cliente: 'Tania', especialidade: 'Endocrino', medico: 'Dr Bradley', local: 'white', endereco: 'Clinica White, Campinas - SP', dia: '2026-11-16', hora: '15:40', observacoes: '' },
+  { cliente: 'Bruna', especialidade: 'Psiquiatria', medico: 'André Akamini', local: 'Fco Glicerio', endereco: 'Av. Fco Glicerio, 1867 - 9ºandar - sala 92, Campinas - SP', dia: '2026-11-25', hora: '10:40', observacoes: '' },
+  { cliente: 'Tania', especialidade: 'Ginecologista', medico: 'Dr. Francisco', local: 'Clinmed', endereco: 'Clinica Clinmed, Campinas - SP', dia: '2026-11-30', hora: '11:45', observacoes: '' },
+  { cliente: 'Bruna', especialidade: 'Reumatologista', medico: 'Marina', local: 'Especialidades', endereco: 'Centro de Especialidades, Campinas - SP', dia: '2027-01-08', hora: '10:20', observacoes: '' }
 ];
 
 export default function App() {
@@ -95,7 +102,6 @@ export default function App() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showAutoNoticeModal, setShowAutoNoticeModal] = useState(false);
   const [showInstallGuideModal, setShowInstallGuideModal] = useState(false);
-  const [showSyncInfoModal, setShowSyncInfoModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   
   const dateInputRef = useRef(null);
@@ -197,7 +203,7 @@ export default function App() {
       );
       await Promise.all(promises);
     } catch (err) {
-      console.error("Erro ao popular o banco:", err);
+      console.error("Erro ao popular banco de dados inicial:", err);
     }
   };
 
@@ -269,11 +275,11 @@ export default function App() {
 
 Olá *${appItem.cliente}*, segue o lembrete da sua consulta:
 
-🩺 *Especialidade:* ${appItem.especialidade}
 👨‍⚕️ *Médico(a):* ${appItem.medico || 'Não especificado'}
-📅 *Data:* ${dataFormatada} às ${horaFormatada}
+🩺 *Especialidade:* ${appItem.especialidade}
 🏥 *Local:* ${localInfo}
-
+📅 *Data:* ${dataFormatada} às ${horaFormatada}
+${appItem.observacoes ? `📄 *Observações:* ${appItem.observacoes}\n` : ''}
 🗺️ *Abrir rota no Google Maps:*
 ${mapsLink}
 
@@ -295,10 +301,11 @@ _Tenha um ótimo atendimento!_`;
 
       mensagem += `-----------------------------------\n`;
       mensagem += `📌 *${idx + 1}. PACIENTE: ${appItem.cliente.toUpperCase()}*\n`;
-      mensagem += `🩺 *Especialidade:* ${appItem.especialidade}\n`;
       mensagem += `👨‍⚕️ *Médico(a):* ${appItem.medico || 'Não especificado'}\n`;
-      mensagem += `🕒 *Horário:* ${horaFormatada}\n`;
+      mensagem += `🩺 *Especialidade:* ${appItem.especialidade}\n`;
       mensagem += `🏥 *Local:* ${localInfo}\n`;
+      mensagem += `🕒 *Horário:* ${horaFormatada}\n`;
+      if (appItem.observacoes) mensagem += `📄 *Obs:* ${appItem.observacoes}\n`;
       mensagem += `🗺️ *Google Maps:* ${mapsLink}\n\n`;
     });
 
@@ -503,6 +510,22 @@ _Tenha um ótimo atendimento!_`;
     return `${day}/${month}/${year}`;
   };
 
+  const handleCopyShareLink = () => {
+    const shareUrl = window.location.href;
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(shareUrl);
+    } else {
+      const textArea = document.createElement("textarea");
+      textArea.value = shareUrl;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+    }
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 3000);
+  };
+
   const getPatientTheme = (name) => {
     switch (name) {
       case 'Tania':
@@ -542,6 +565,7 @@ _Tenha um ótimo atendimento!_`;
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 font-sans pb-12">
+      {/* Cabeçalho */}
       <header className="bg-slate-900 text-white shadow-md sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -558,10 +582,7 @@ _Tenha um ótimo atendimento!_`;
                   </span>
                 </h1>
                 
-                <button 
-                  onClick={() => setShowSyncInfoModal(true)}
-                  className="mt-1 flex items-center gap-1.5 text-xs text-left cursor-pointer hover:opacity-80 transition"
-                >
+                <div className="mt-1 flex items-center gap-1.5 text-xs text-left">
                   {isCloudConnected ? (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -573,10 +594,11 @@ _Tenha um ótimo atendimento!_`;
                       Salvo Apenas Neste Aparelho
                     </span>
                   )}
-                </button>
+                </div>
               </div>
             </div>
 
+            {/* Ações Rápidas */}
             <div className="flex items-center space-x-2 w-full sm:w-auto justify-end flex-wrap gap-y-2">
               <button
                 onClick={() => setShowInstallGuideModal(true)}
@@ -584,6 +606,14 @@ _Tenha um ótimo atendimento!_`;
               >
                 <Smartphone className="w-4 h-4" />
                 <span>Baixar no Celular</span>
+              </button>
+
+              <button
+                onClick={() => setShowShareModal(true)}
+                className="flex items-center space-x-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-xl text-xs font-bold transition"
+              >
+                <Share2 className="w-4 h-4 text-amber-400" />
+                <span>Compartilhar</span>
               </button>
 
               <button
@@ -612,6 +642,7 @@ _Tenha um ótimo atendimento!_`;
         </div>
       </header>
 
+      {/* Conteúdo Principal */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
         <div className="bg-white rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-200/80 mb-6 space-y-4">
           
@@ -646,7 +677,7 @@ _Tenha um ótimo atendimento!_`;
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Pesquisar especialidade, médico ou clínica..."
+                placeholder="Pesquisar médico, especialidade ou clínica..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs focus:ring-2 focus:ring-amber-400 focus:outline-none transition text-left"
@@ -662,6 +693,7 @@ _Tenha um ótimo atendimento!_`;
             </div>
           </div>
 
+          {/* FILTRO DINÂMICO DE PACIENTES */}
           <div className="flex items-center space-x-2 overflow-x-auto pt-2 pb-1 scrollbar-none text-left">
             <span className="text-xs font-bold text-slate-500 mr-1 shrink-0">Paciente:</span>
             
@@ -678,7 +710,7 @@ _Tenha um ótimo atendimento!_`;
 
             {loading ? (
               <span className="text-[11px] text-slate-400 italic font-medium px-2 py-1 bg-slate-50 rounded-lg">
-                Lendo lista de pacientes...
+                Lendo pacientes...
               </span>
             ) : (
               optionsList.clientes.map(patient => {
@@ -702,6 +734,7 @@ _Tenha um ótimo atendimento!_`;
 
         </div>
 
+        {/* Lista de Post-its */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400">
             <div className="w-8 h-8 border-4 border-amber-400 border-t-transparent rounded-full animate-spin mb-3"></div>
@@ -740,8 +773,8 @@ _Tenha um ótimo atendimento!_`;
                         <span className={`inline-block px-3 py-1 rounded-full text-xs font-black border mb-1.5 ${theme.badge}`}>
                           {appItem.cliente}
                         </span>
-                        <h2 className="text-base font-black tracking-tight leading-snug text-left">
-                          {appItem.especialidade}
+                        <h2 className="text-base font-black tracking-tight leading-snug text-left text-slate-900">
+                          {appItem.medico || 'Médico Não Informado'}
                         </h2>
                       </div>
 
@@ -771,13 +804,18 @@ _Tenha um ótimo atendimento!_`;
                     </div>
 
                     <div className="space-y-2.5 text-xs text-left">
+                      
+                      {/* Especialidade */}
                       <div className="flex items-start space-x-2.5 text-left">
-                        <User className="w-4 h-4 opacity-70 shrink-0 mt-0.5" />
-                        <span className="text-left"><strong className="font-bold">Médico(a):</strong> {appItem.medico || 'Não informado'}</span>
+                        <Activity className="w-4 h-4 opacity-70 shrink-0 mt-0.5 text-slate-700" />
+                        <span className="text-left">
+                          <strong className="font-bold">Especialidade:</strong> {appItem.especialidade}
+                        </span>
                       </div>
 
+                      {/* Clínica / Hospital */}
                       <div className="flex items-start space-x-2.5 text-left">
-                        <MapPin className="w-4 h-4 opacity-70 shrink-0 mt-0.5" />
+                        <MapPin className="w-4 h-4 opacity-70 shrink-0 mt-0.5 text-slate-700" />
                         <div className="text-left">
                           <p className="text-left"><strong className="font-bold">Clínica:</strong> {appItem.local}</p>
                           {appItem.endereco && (
@@ -786,8 +824,9 @@ _Tenha um ótimo atendimento!_`;
                         </div>
                       </div>
 
+                      {/* Data e Hora */}
                       <div className="flex items-center space-x-2.5 text-left">
-                        <Calendar className="w-4 h-4 opacity-70 shrink-0" />
+                        <Calendar className="w-4 h-4 opacity-70 shrink-0 text-slate-700" />
                         <span className="font-mono font-bold text-left">
                           {formatDate(appItem.dia)} {appItem.hora && appItem.hora !== '00:00' ? `às ${appItem.hora}h` : ''}
                         </span>
@@ -798,8 +837,9 @@ _Tenha um ótimo atendimento!_`;
                         )}
                       </div>
 
+                      {/* Observações */}
                       {appItem.observacoes ? (
-                        <div className="mt-3 p-3 bg-white/70 border border-black/10 rounded-2xl text-xs text-left space-y-1 shadow-2xs">
+                        <div className="mt-3 p-3 bg-white/80 border border-black/10 rounded-2xl text-xs text-left space-y-1 shadow-2xs">
                           <div className="flex items-center space-x-1.5 font-bold text-slate-800">
                             <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                             <span>Observações:</span>
@@ -885,6 +925,40 @@ _Tenha um ótimo atendimento!_`;
                 Sim, Excluir
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Compartilhar */}
+      {showShareModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl p-6 text-center space-y-4 border border-slate-100">
+            <div className="w-12 h-12 bg-amber-100 text-amber-900 rounded-2xl flex items-center justify-center mx-auto">
+              <Share2 className="w-6 h-6" />
+            </div>
+            
+            <h3 className="text-base font-bold text-slate-900">Compartilhar Agenda da Família</h3>
+            <p className="text-xs text-slate-600">
+              Qualquer pessoa com este link pode acessar e visualizar as consultas médicas sincronizadas em tempo real.
+            </p>
+
+            <div className="p-3 bg-slate-100 rounded-2xl flex items-center justify-between text-xs">
+              <span className="truncate max-w-[240px] text-slate-500 font-mono">{window.location.href}</span>
+              <button
+                onClick={handleCopyShareLink}
+                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold flex items-center space-x-1 shrink-0"
+              >
+                {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedLink ? 'Copiado!' : 'Copiar'}</span>
+              </button>
+            </div>
+
+            <button
+              onClick={() => setShowShareModal(false)}
+              className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition"
+            >
+              Fechar
+            </button>
           </div>
         </div>
       )}
