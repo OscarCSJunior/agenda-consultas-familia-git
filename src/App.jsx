@@ -625,6 +625,22 @@ _Tenha um ótimo atendimento!_`;
             {/* Ações Rápidas & Login */}
             <div className="flex items-center space-x-2 w-full sm:w-auto justify-end flex-wrap gap-y-2">
               
+              {/* Botão de Carga Manual/Sincronização com o Firebase */}
+              <button
+                onClick={() => {
+                  if (db) {
+                    const colRef = collection(db, 'consultas_familia');
+                    seedCloudDatabase(colRef);
+                    alert("Consultas enviadas com sucesso para o banco no Firebase!");
+                  }
+                }}
+                className="flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs"
+                title="Subir lista inicial para o Firebase"
+              >
+                <Sparkles className="w-4 h-4 text-amber-300" />
+                <span>Restaurar Banco na Nuvem</span>
+              </button>
+
               {/* Botão Login do Google */}
               {currentUser && !currentUser.isAnonymous ? (
                 <div className="flex items-center space-x-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-xl">
