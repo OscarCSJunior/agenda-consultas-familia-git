@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAnalytics } from "firebase/analytics";
 import { 
   getAuth, 
-  signInAnonymously 
+  signInAnonymously, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signOut, 
+  onAuthStateChanged 
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -46,11 +49,13 @@ import {
   CloudOff,
   AlertTriangle,
   FileText,
-  Activity
+  Activity,
+  LogOut,
+  LogIn
 } from 'lucide-react';
 
 // ============================================================================
-// ATENÇÃO: SUSTITUA ABAIXO PELAS SUAS CHAVES DO CONSOLE DO FIREBASE
+// COLE ABAIXO SUAS CHAVES REAIS DO FIREBASE CONSOLE
 // ============================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyCI1Uen8stm5p1qq-vzINMNNlmveCCxicc",
@@ -74,7 +79,7 @@ try {
   console.warn("Falha ao inicializar o Firebase SDK:", error);
 }
 
-const LOCAL_STORAGE_KEY = 'consultas_medicas_backup_data_v7';
+const LOCAL_STORAGE_KEY = 'consultas_medicas_backup_data_v8';
 
 const INITIAL_APPOINTMENTS = [
   { cliente: 'Tania', especialidade: 'Oftalmologista', medico: 'Luiz Fernando Pozzi', local: 'COH - Franceschini', endereco: 'Rua Franceschini, Campinas - SP', dia: '2026-10-31', hora: '00:00', observacoes: '' },
@@ -93,6 +98,7 @@ const INITIAL_APPOINTMENTS = [
 ];
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState(null);
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -140,6 +146,7 @@ export default function App() {
     observacoes: ''
   });
 
+  // Monitorar Autenticação e Firestore
   useEffect(() => {
     if (isDummyConfig || !db || !auth) {
       setIsCloudConnected(false);
@@ -149,45 +156,66 @@ export default function App() {
 
     let unsubscribeSnapshot;
 
-    const initFirebaseSync = async () => {
-      try {
-        await signInAnonymously(auth);
-        const colRef = collection(db, 'consultas_familia');
-        
-        unsubscribeSnapshot = onSnapshot(colRef, 
-          (snapshot) => {
-            const data = snapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            }));
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
 
-            if (data.length > 0) {
-              setAppointments(data);
-            } else {
-              seedCloudDatabase(colRef);
-            }
-            setIsCloudConnected(true);
-            setLoading(false);
-          }, 
-          (err) => {
-            console.warn("Erro ao ler banco de dados do Firebase:", err);
-            setIsCloudConnected(false);
-            loadFromLocalStorage();
-          }
-        );
-      } catch (err) {
-        console.warn("Falha ao autenticar no Firebase:", err);
-        setIsCloudConnected(false);
-        loadFromLocalStorage();
+      if (!user) {
+        try {
+          await signInAnonymously(auth);
+        } catch (e) {
+          console.warn("Erro ao entrar como visitante anônimo:", e);
+        }
       }
-    };
 
-    initFirebaseSync();
+      const colRef = collection(db, 'consultas_familia');
+      unsubscribeSnapshot = onSnapshot(colRef, 
+        (snapshot) => {
+          const data = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+
+          if (data.length > 0) {
+            setAppointments(data);
+          } else {
+            seedCloudDatabase(colRef);
+          }
+          setIsCloudConnected(true);
+          setLoading(false);
+        }, 
+        (err) => {
+          console.warn("Bloqueio de permissão no Firestore:", err);
+          setIsCloudConnected(false);
+          loadFromLocalStorage();
+        }
+      );
+    });
 
     return () => {
+      unsubscribeAuth();
       if (unsubscribeSnapshot) unsubscribeSnapshot();
     };
   }, []);
+
+  const handleGoogleLogin = async () => {
+    if (!auth) return;
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (err) {
+      console.error("Erro no Login do Google:", err);
+      alert("Não foi possível conectar com a Conta Google: " + err.message);
+    }
+  };
+
+  const handleGoogleLogout = async () => {
+    if (!auth) return;
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error("Erro ao sair:", err);
+    }
+  };
 
   const seedCloudDatabase = async (colRef) => {
     try {
@@ -199,7 +227,7 @@ export default function App() {
       );
       await Promise.all(promises);
     } catch (err) {
-      console.error("Erro ao popular banco de dados inicial:", err);
+      console.error("Erro ao popular banco inicial:", err);
     }
   };
 
@@ -594,8 +622,36 @@ _Tenha um ótimo atendimento!_`;
               </div>
             </div>
 
-            {/* Ações Rápidas */}
+            {/* Ações Rápidas & Login */}
             <div className="flex items-center space-x-2 w-full sm:w-auto justify-end flex-wrap gap-y-2">
+              
+              {/* Botão Login do Google */}
+              {currentUser && !currentUser.isAnonymous ? (
+                <div className="flex items-center space-x-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-xl">
+                  {currentUser.photoURL && (
+                    <img src={currentUser.photoURL} alt="User" className="w-5 h-5 rounded-full" />
+                  )}
+                  <span className="text-xs font-bold text-slate-200 truncate max-w-[100px]">
+                    {currentUser.displayName || currentUser.email}
+                  </span>
+                  <button
+                    onClick={handleGoogleLogout}
+                    className="text-slate-400 hover:text-rose-400 transition"
+                    title="Sair da Conta Google"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleGoogleLogin}
+                  className="flex items-center space-x-1.5 px-3 py-2 bg-white text-slate-900 hover:bg-slate-100 rounded-xl text-xs font-bold transition shadow-xs"
+                >
+                  <LogIn className="w-4 h-4 text-blue-600" />
+                  <span>Entrar com Google</span>
+                </button>
+              )}
+
               <button
                 onClick={() => setShowInstallGuideModal(true)}
                 className="flex items-center space-x-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition"
@@ -769,6 +825,8 @@ _Tenha um ótimo atendimento!_`;
                         <span className={`inline-block px-3 py-1 rounded-full text-xs font-black border mb-1.5 ${theme.badge}`}>
                           {appItem.cliente}
                         </span>
+                        
+                        {/* 1. Nome do Médico */}
                         <h2 className="text-base font-black tracking-tight leading-snug text-left text-slate-900">
                           {appItem.medico || 'Médico Não Informado'}
                         </h2>
@@ -801,7 +859,7 @@ _Tenha um ótimo atendimento!_`;
 
                     <div className="space-y-2.5 text-xs text-left">
                       
-                      {/* Especialidade */}
+                      {/* 2. Especialidade (Após Médico) */}
                       <div className="flex items-start space-x-2.5 text-left">
                         <Activity className="w-4 h-4 opacity-70 shrink-0 mt-0.5 text-slate-700" />
                         <span className="text-left">
@@ -809,7 +867,7 @@ _Tenha um ótimo atendimento!_`;
                         </span>
                       </div>
 
-                      {/* Clínica / Hospital */}
+                      {/* 3. Clínica / Hospital (Antes da Data) */}
                       <div className="flex items-start space-x-2.5 text-left">
                         <MapPin className="w-4 h-4 opacity-70 shrink-0 mt-0.5 text-slate-700" />
                         <div className="text-left">
