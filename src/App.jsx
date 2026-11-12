@@ -51,7 +51,8 @@ import {
   FileText,
   Activity,
   LogOut,
-  LogIn
+  LogIn,
+  GripVertical
 } from 'lucide-react';
 
 // ============================================================================
@@ -80,6 +81,7 @@ try {
 }
 
 const LOCAL_STORAGE_KEY = 'consultas_medicas_backup_data_v8';
+const PATIENT_ORDER_KEY = 'consultas_medicas_patient_order_v1';
 
 const INITIAL_APPOINTMENTS = [
   { cliente: 'Tania', especialidade: 'Oftalmologista', medico: 'Luiz Fernando Pozzi', local: 'COH - Franceschini', endereco: 'Rua Franceschini, Campinas - SP', dia: '2026-10-31', hora: '00:00', observacoes: '' },
@@ -110,6 +112,17 @@ export default function App() {
   const dateInputRef = useRef(null);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [isCloudConnected, setIsCloudConnected] = useState(false);
+
+  // Estado para ordenação personalizada (arrastar e soltar) dos pacientes
+  const [patientOrder, setPatientOrder] = useState(() => {
+    try {
+      const saved = localStorage.getItem(PATIENT_ORDER_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [draggedPatient, setDraggedPatient] = useState(null);
 
   const [viewMode, setViewMode] = useState('proximas'); 
   const [selectedPatient, setSelectedPatient] = useState('Todos');
@@ -281,14 +294,61 @@ export default function App() {
     });
 
     const sortFn = (a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' });
+    const rawClientes = Array.from(clientesSet).sort(sortFn);
+
+    // Aplica a ordem personalizada salva pelo usuário (arrastar e soltar)
+    const orderedClientes = [...rawClientes].sort((a, b) => {
+      const idxA = patientOrder.indexOf(a);
+      const idxB = patientOrder.indexOf(b);
+      if (idxA === -1 && idxB === -1) return sortFn(a, b);
+      if (idxA === -1) return 1;
+      if (idxB === -1) return -1;
+      return idxA - idxB;
+    });
 
     return {
-      clientes: Array.from(clientesSet).sort(sortFn),
+      clientes: orderedClientes,
       especialidades: Array.from(espSet).sort(sortFn),
       medicos: Array.from(medSet).sort(sortFn),
       locais: Array.from(localSet).sort(sortFn)
     };
-  }, [appointments, loading]);
+  }, [appointments, loading, patientOrder]);
+
+  // Funções para arrastar e reordenar os nomes dos pacientes
+  const handleDragStartPatient = (e, patient) => {
+    setDraggedPatient(patient);
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+    }
+  };
+
+  const handleDragOverPatient = (e) => {
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move';
+    }
+  };
+
+  const handleDropPatient = (e, targetPatient) => {
+    e.preventDefault();
+    if (!draggedPatient || draggedPatient === targetPatient) return;
+
+    const currentList = [...optionsList.clientes];
+    const fromIndex = currentList.indexOf(draggedPatient);
+    const toIndex = currentList.indexOf(targetPatient);
+
+    if (fromIndex !== -1 && toIndex !== -1) {
+      currentList.splice(fromIndex, 1);
+      currentList.splice(toIndex, 0, draggedPatient);
+      setPatientOrder(currentList);
+      try {
+        localStorage.setItem(PATIENT_ORDER_KEY, JSON.stringify(currentList));
+      } catch (err) {
+        console.warn("Não foi possível salvar ordem dos pacientes:", err);
+      }
+    }
+    setDraggedPatient(null);
+  };
 
   const handleSendWhatsAppReminder = (appItem) => {
     const dataFormatada = formatDate(appItem.dia);
@@ -591,43 +651,43 @@ _Tenha um ótimo atendimento!_`;
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 font-sans pb-12">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-slate-100 text-slate-800 font-sans pb-12">
       {/* Cabeçalho Limpo e Moderno */}
-      <header className="bg-slate-900 text-white shadow-md sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3">
-          <div className="flex items-center justify-between gap-2">
+      <header className="w-full bg-slate-900 text-white shadow-md sticky top-0 z-40">
+        <div className="w-full max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 py-3">
+          <div className="flex items-center justify-between gap-1.5 sm:gap-2">
             
             {/* Título Minimalista */}
-            <div className="flex items-center space-x-2 text-left">
-              <div className="p-2 bg-amber-400 text-slate-900 rounded-xl shadow-xs">
-                <Stethoscope className="w-5 h-5" />
+            <div className="flex items-center space-x-1.5 sm:space-x-2 text-left min-w-0">
+              <div className="p-1.5 sm:p-2 bg-amber-400 text-slate-900 rounded-xl shadow-xs shrink-0">
+                <Stethoscope className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
-              <div className="text-left">
-                <h1 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-1.5">
+              <div className="text-left truncate">
+                <h1 className="text-sm sm:text-lg font-black tracking-tight text-white flex items-center gap-1.5 truncate">
                   Agenda
                   <span className="hidden sm:inline-block text-[10px] px-2 py-0.5 rounded-full bg-amber-400 text-amber-950 font-bold">
                     Post-its
                   </span>
                 </h1>
                 <p className="text-[10px] text-slate-400 flex items-center gap-1">
-                  <span className={`inline-block w-1.5 h-1.5 rounded-full ${isCloudConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
-                  {isCloudConnected ? 'Nuvem' : 'Local'}
+                  <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${isCloudConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+                  <span className="truncate">{isCloudConnected ? 'Nuvem' : 'Local'}</span>
                 </p>
               </div>
             </div>
 
             {/* Ações do Topo: Botões Lado a Lado + Foto Perfil */}
-            <div className="flex items-center space-x-2 shrink-0">
+            <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
               
               {/* Botão Notificar Hoje */}
               <button
                 onClick={() => setShowAutoNoticeModal(true)}
-                className="relative flex items-center justify-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs"
+                className="relative flex items-center justify-center space-x-1 px-2 sm:px-3 py-1.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] sm:text-xs font-bold transition shadow-xs"
               >
-                <BellRing className="w-3.5 h-3.5" />
-                <span>Notificar Hoje</span>
+                <BellRing className="w-3.5 h-3.5 shrink-0" />
+                <span>Notificar</span>
                 {todayAppointments.length > 0 && (
-                  <span className="ml-1 w-4 h-4 bg-amber-400 text-amber-950 rounded-full flex items-center justify-center text-[9px] font-black">
+                  <span className="ml-0.5 w-4 h-4 bg-amber-400 text-amber-950 rounded-full flex items-center justify-center text-[9px] font-black">
                     {todayAppointments.length}
                   </span>
                 )}
@@ -636,17 +696,17 @@ _Tenha um ótimo atendimento!_`;
               {/* Botão Novo Post-it */}
               <button
                 onClick={() => openModal()}
-                className="flex items-center justify-center space-x-1.5 px-3 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 rounded-xl text-xs font-black transition shadow-xs"
+                className="flex items-center justify-center space-x-1 px-2 sm:px-3 py-1.5 sm:py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 rounded-xl text-[11px] sm:text-xs font-black transition shadow-xs"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ Novo Post-it</span>
+                <Plus className="w-3.5 h-3.5 shrink-0" />
+                <span>Post-it</span>
               </button>
 
               {/* Foto do Perfil com Pop-up Popover */}
-              <div className="relative ml-1">
+              <div className="relative ml-0.5">
                 <button
                   onClick={() => setShowProfileMenu(!showProfileMenu)}
-                  className="w-9 h-9 rounded-full bg-slate-800 border-2 border-slate-700 hover:border-amber-400 overflow-hidden flex items-center justify-center transition focus:outline-none"
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-slate-800 border-2 border-slate-700 hover:border-amber-400 overflow-hidden flex items-center justify-center transition focus:outline-none shrink-0"
                   title="Opções da Conta"
                 >
                   {currentUser && currentUser.photoURL ? (
@@ -729,37 +789,37 @@ _Tenha um ótimo atendimento!_`;
       </header>
 
       {/* Conteúdo Principal */}
-      <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-5">
-        <div className="bg-white rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-200 mb-5 space-y-4">
+      <main className="w-full max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 mt-4 sm:mt-5">
+        <div className="w-full bg-white rounded-3xl p-3.5 sm:p-5 shadow-sm border border-slate-200 mb-5 space-y-3.5">
           
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-            <div className="flex items-center bg-slate-100 p-1 rounded-2xl">
+            <div className="grid grid-cols-2 sm:flex items-center bg-slate-100 p-1 rounded-2xl w-full lg:w-auto">
               <button
                 onClick={() => setViewMode('proximas')}
-                className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+                className={`flex items-center justify-center space-x-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition ${
                   viewMode === 'proximas' 
                     ? 'bg-white text-slate-900 shadow-xs' 
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <CalendarDays className="w-3.5 h-3.5 text-amber-500" />
-                <span>Próximos Agendamentos</span>
+                <CalendarDays className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span className="truncate">Próximas</span>
               </button>
               
               <button
                 onClick={() => setViewMode('historico')}
-                className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+                className={`flex items-center justify-center space-x-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition ${
                   viewMode === 'historico' 
                     ? 'bg-white text-slate-900 shadow-xs' 
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <History className="w-3.5 h-3.5 text-indigo-500" />
-                <span>Histórico Passado</span>
+                <History className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                <span className="truncate">Histórico</span>
               </button>
             </div>
 
-            <div className="relative flex-1 max-w-md text-left">
+            <div className="relative flex-1 w-full lg:max-w-md text-left">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
@@ -779,13 +839,15 @@ _Tenha um ótimo atendimento!_`;
             </div>
           </div>
 
-          {/* FILTRO DINÂMICO DE PACIENTES */}
-          <div className="flex items-center space-x-2 overflow-x-auto pt-1 pb-1 scrollbar-none text-left">
-            <span className="text-xs font-bold text-slate-500 mr-1 shrink-0">Paciente:</span>
+          {/* FILTRO DINÂMICO DE PACIENTES COM ARRASTAR E SOLTAR */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1 text-left w-full">
+            <span className="text-[11px] font-bold text-slate-500 mr-1 shrink-0 flex items-center gap-1">
+              Paciente:
+            </span>
             
             <button
               onClick={() => setSelectedPatient('Todos')}
-              className={`px-3 py-1 rounded-xl text-xs transition shrink-0 border ${
+              className={`px-2.5 py-1 rounded-xl text-xs transition shrink-0 border ${
                 selectedPatient === 'Todos'
                   ? 'bg-slate-900 border-slate-900 text-white font-black'
                   : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -802,16 +864,24 @@ _Tenha um ótimo atendimento!_`;
               optionsList.clientes.map(patient => {
                 const theme = getPatientTheme(patient);
                 const isActive = selectedPatient === patient;
+                const isBeingDragged = draggedPatient === patient;
 
                 return (
                   <button
                     key={patient}
+                    draggable
+                    onDragStart={(e) => handleDragStartPatient(e, patient)}
+                    onDragOver={handleDragOverPatient}
+                    onDrop={(e) => handleDropPatient(e, patient)}
+                    onDragEnd={() => setDraggedPatient(null)}
                     onClick={() => setSelectedPatient(patient)}
-                    className={`px-3 py-1 rounded-xl text-xs transition shrink-0 border ${
+                    title="Arraste para reordenar a posição"
+                    className={`flex items-center space-x-1 px-2.5 py-1 rounded-xl text-xs transition shrink-0 border cursor-grab active:cursor-grabbing select-none ${
                       isActive ? theme.filterActive : theme.filterInactive
-                    }`}
+                    } ${isBeingDragged ? 'opacity-50 scale-95' : ''}`}
                   >
-                    {patient}
+                    <GripVertical className="w-3 h-3 opacity-40 shrink-0" />
+                    <span>{patient}</span>
                   </button>
                 );
               })
