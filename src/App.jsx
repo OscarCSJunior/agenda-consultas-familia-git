@@ -442,13 +442,17 @@ export default function App() {
   };
 
   // Controle de toque longo (3 segundos) para abrir o seletor de cores
-  const handlePatientPressStart = (patient) => {
+  const handlePatientPressStart = (e, patient) => {
+    if (e.button && e.button !== 0) return; // Ignora clique com botão direito
     isLongPressTriggeredRef.current = false;
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
 
     longPressTimerRef.current = setTimeout(() => {
       isLongPressTriggeredRef.current = true;
       setColorPickerPatient(patient);
+      if (navigator.vibrate) {
+        try { navigator.vibrate(50); } catch {}
+      }
     }, 3000);
   };
 
@@ -1012,7 +1016,8 @@ _Tenha um ótimo atendimento!_`;
                 return (
                   <button
                     key={patient}
-                    draggable
+                    type="button"
+                    draggable={colorPickerPatient === null}
                     onDragStart={(e) => {
                       handlePatientPressEnd();
                       handleDragStartPatient(e, patient);
@@ -1020,12 +1025,10 @@ _Tenha um ótimo atendimento!_`;
                     onDragOver={handleDragOverPatient}
                     onDrop={(e) => handleDropPatient(e, patient)}
                     onDragEnd={() => setDraggedPatient(null)}
-                    onMouseDown={() => handlePatientPressStart(patient)}
-                    onMouseUp={handlePatientPressEnd}
-                    onMouseLeave={handlePatientPressEnd}
-                    onTouchStart={() => handlePatientPressStart(patient)}
-                    onTouchEnd={handlePatientPressEnd}
-                    onTouchMove={handlePatientPressEnd}
+                    onPointerDown={(e) => handlePatientPressStart(e, patient)}
+                    onPointerUp={handlePatientPressEnd}
+                    onPointerLeave={handlePatientPressEnd}
+                    onPointerCancel={handlePatientPressEnd}
                     onContextMenu={(e) => e.preventDefault()}
                     onClick={() => {
                       if (isLongPressTriggeredRef.current) {
@@ -1034,8 +1037,9 @@ _Tenha um ótimo atendimento!_`;
                       }
                       setSelectedPatient(patient);
                     }}
+                    style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
                     title="Toque para filtrar • Segure por 3 segundos para escolher a cor • Arraste para reordenar"
-                    className={`flex items-center ${isCompactPatientBar ? 'space-x-0.5 px-1.5 sm:px-2 py-1 text-[10px] sm:text-xs' : 'space-x-1 px-2.5 py-1 text-xs'} rounded-xl transition shrink-0 border cursor-grab active:cursor-grabbing select-none ${
+                    className={`flex items-center ${isCompactPatientBar ? 'space-x-0.5 px-1.5 sm:px-2 py-1 text-[10px] sm:text-xs' : 'space-x-1 px-2.5 py-1 text-xs'} rounded-xl transition shrink-0 border cursor-grab active:cursor-grabbing select-none touch-manipulation ${
                       isActive ? theme.filterActive : theme.filterInactive
                     } ${isBeingDragged ? 'opacity-50 scale-95' : ''}`}
                   >
