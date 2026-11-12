@@ -188,6 +188,8 @@ export default function App() {
   const [copiedLink, setCopiedLink] = useState(false);
   
   const dateInputRef = useRef(null);
+  const longPressTimerRef = useRef(null);
+  const isLongPressTriggeredRef = useRef(false);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [isCloudConnected, setIsCloudConnected] = useState(false);
 
@@ -437,6 +439,24 @@ export default function App() {
       }
     }
     setDraggedPatient(null);
+  };
+
+  // Controle de toque longo (3 segundos) para abrir o seletor de cores
+  const handlePatientPressStart = (patient) => {
+    isLongPressTriggeredRef.current = false;
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+
+    longPressTimerRef.current = setTimeout(() => {
+      isLongPressTriggeredRef.current = true;
+      setColorPickerPatient(patient);
+    }, 3000);
+  };
+
+  const handlePatientPressEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
   };
 
   const handleSendWhatsAppReminder = (appItem) => {
@@ -993,26 +1013,35 @@ _Tenha um ótimo atendimento!_`;
                   <button
                     key={patient}
                     draggable
-                    onDragStart={(e) => handleDragStartPatient(e, patient)}
+                    onDragStart={(e) => {
+                      handlePatientPressEnd();
+                      handleDragStartPatient(e, patient);
+                    }}
                     onDragOver={handleDragOverPatient}
                     onDrop={(e) => handleDropPatient(e, patient)}
                     onDragEnd={() => setDraggedPatient(null)}
+                    onMouseDown={() => handlePatientPressStart(patient)}
+                    onMouseUp={handlePatientPressEnd}
+                    onMouseLeave={handlePatientPressEnd}
+                    onTouchStart={() => handlePatientPressStart(patient)}
+                    onTouchEnd={handlePatientPressEnd}
+                    onTouchMove={handlePatientPressEnd}
+                    onContextMenu={(e) => e.preventDefault()}
                     onClick={() => {
-                      if (isActive) {
-                        setColorPickerPatient(colorPickerPatient === patient ? null : patient);
-                      } else {
-                        setSelectedPatient(patient);
-                        setColorPickerPatient(patient);
+                      if (isLongPressTriggeredRef.current) {
+                        isLongPressTriggeredRef.current = false;
+                        return;
                       }
+                      setSelectedPatient(patient);
                     }}
-                    title="Toque para filtrar e escolher a cor • Arraste para reordenar"
+                    title="Toque para filtrar • Segure por 3 segundos para escolher a cor • Arraste para reordenar"
                     className={`flex items-center ${isCompactPatientBar ? 'space-x-0.5 px-1.5 sm:px-2 py-1 text-[10px] sm:text-xs' : 'space-x-1 px-2.5 py-1 text-xs'} rounded-xl transition shrink-0 border cursor-grab active:cursor-grabbing select-none ${
                       isActive ? theme.filterActive : theme.filterInactive
                     } ${isBeingDragged ? 'opacity-50 scale-95' : ''}`}
                   >
                     <GripVertical className={`${isCompactPatientBar ? 'w-2.5 h-2.5' : 'w-3 h-3'} opacity-40 shrink-0`} />
                     <span className="truncate max-w-[68px] sm:max-w-none">{patient}</span>
-                    {isActive && (
+                    {colorPickerPatient === patient && (
                       <Palette className={`${isCompactPatientBar ? 'w-2.5 h-2.5' : 'w-3 h-3'} opacity-75 shrink-0 ml-0.5`} />
                     )}
                   </button>
