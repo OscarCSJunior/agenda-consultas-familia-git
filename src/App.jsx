@@ -52,7 +52,8 @@ import {
   Activity,
   LogOut,
   LogIn,
-  GripVertical
+  GripVertical,
+  Palette
 } from 'lucide-react';
 
 // ============================================================================
@@ -82,6 +83,83 @@ try {
 
 const LOCAL_STORAGE_KEY = 'consultas_medicas_backup_data_v8';
 const PATIENT_ORDER_KEY = 'consultas_medicas_patient_order_v1';
+const PATIENT_COLORS_KEY = 'consultas_medicas_patient_colors_v1';
+
+// Paleta de cores harmonizadas (Fundo pastel + Detalhes mais fortes)
+const THEME_PALETTES = {
+  pink: {
+    label: 'Rosa',
+    swatch: 'bg-pink-400',
+    bg: 'bg-pink-100 border-pink-300 text-pink-950',
+    pin: 'bg-rose-500',
+    badge: 'bg-pink-200 text-pink-800 border-pink-300',
+    filterActive: 'bg-pink-200 border-pink-400 text-pink-900 font-black ring-2 ring-pink-400',
+    filterInactive: 'bg-pink-50/80 text-pink-800 border-pink-200 hover:bg-pink-100',
+  },
+  amber: {
+    label: 'Amarelo',
+    swatch: 'bg-amber-400',
+    bg: 'bg-amber-100 border-amber-300 text-amber-950',
+    pin: 'bg-amber-500',
+    badge: 'bg-amber-200 text-amber-900 border-amber-300',
+    filterActive: 'bg-amber-200 border-amber-400 text-amber-950 font-black ring-2 ring-amber-400',
+    filterInactive: 'bg-amber-50/80 text-amber-800 border-amber-200 hover:bg-amber-100',
+  },
+  purple: {
+    label: 'Roxo',
+    swatch: 'bg-purple-400',
+    bg: 'bg-purple-100 border-purple-300 text-purple-950',
+    pin: 'bg-purple-500',
+    badge: 'bg-purple-200 text-purple-900 border-purple-300',
+    filterActive: 'bg-purple-200 border-purple-400 text-purple-950 font-black ring-2 ring-purple-400',
+    filterInactive: 'bg-purple-50/80 text-purple-800 border-purple-200 hover:bg-purple-100',
+  },
+  emerald: {
+    label: 'Verde',
+    swatch: 'bg-emerald-400',
+    bg: 'bg-emerald-100 border-emerald-300 text-emerald-950',
+    pin: 'bg-emerald-500',
+    badge: 'bg-emerald-200 text-emerald-900 border-emerald-300',
+    filterActive: 'bg-emerald-200 border-emerald-400 text-emerald-950 font-black ring-2 ring-emerald-400',
+    filterInactive: 'bg-emerald-50/80 text-emerald-800 border-emerald-200 hover:bg-emerald-100',
+  },
+  sky: {
+    label: 'Azul Céu',
+    swatch: 'bg-sky-400',
+    bg: 'bg-sky-100 border-sky-300 text-sky-950',
+    pin: 'bg-sky-500',
+    badge: 'bg-sky-200 text-sky-900 border-sky-300',
+    filterActive: 'bg-sky-200 border-sky-400 text-sky-950 font-black ring-2 ring-sky-400',
+    filterInactive: 'bg-sky-50/80 text-sky-800 border-sky-200 hover:bg-sky-100',
+  },
+  orange: {
+    label: 'Pêssego',
+    swatch: 'bg-orange-400',
+    bg: 'bg-orange-100 border-orange-300 text-orange-950',
+    pin: 'bg-orange-500',
+    badge: 'bg-orange-200 text-orange-900 border-orange-300',
+    filterActive: 'bg-orange-200 border-orange-400 text-orange-950 font-black ring-2 ring-orange-400',
+    filterInactive: 'bg-orange-50/80 text-orange-800 border-orange-200 hover:bg-orange-100',
+  },
+  teal: {
+    label: 'Turquesa',
+    swatch: 'bg-teal-400',
+    bg: 'bg-teal-100 border-teal-300 text-teal-950',
+    pin: 'bg-teal-500',
+    badge: 'bg-teal-200 text-teal-900 border-teal-300',
+    filterActive: 'bg-teal-200 border-teal-400 text-teal-950 font-black ring-2 ring-teal-400',
+    filterInactive: 'bg-teal-50/80 text-teal-800 border-teal-200 hover:bg-teal-100',
+  },
+  indigo: {
+    label: 'Índigo',
+    swatch: 'bg-indigo-400',
+    bg: 'bg-indigo-100 border-indigo-300 text-indigo-950',
+    pin: 'bg-indigo-500',
+    badge: 'bg-indigo-200 text-indigo-900 border-indigo-300',
+    filterActive: 'bg-indigo-200 border-indigo-400 text-indigo-950 font-black ring-2 ring-indigo-400',
+    filterInactive: 'bg-indigo-50/80 text-indigo-800 border-indigo-200 hover:bg-indigo-100',
+  }
+};
 
 const INITIAL_APPOINTMENTS = [
   { cliente: 'Tania', especialidade: 'Oftalmologista', medico: 'Luiz Fernando Pozzi', local: 'COH - Franceschini', endereco: 'Rua Franceschini, Campinas - SP', dia: '2026-10-31', hora: '00:00', observacoes: '' },
@@ -123,6 +201,17 @@ export default function App() {
     }
   });
   const [draggedPatient, setDraggedPatient] = useState(null);
+
+  // Estado para cores personalizadas por paciente
+  const [patientColors, setPatientColors] = useState(() => {
+    try {
+      const saved = localStorage.getItem(PATIENT_COLORS_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [colorPickerPatient, setColorPickerPatient] = useState(null);
 
   const [viewMode, setViewMode] = useState('proximas'); 
   const [selectedPatient, setSelectedPatient] = useState('Todos');
@@ -613,42 +702,36 @@ _Tenha um ótimo atendimento!_`;
     setTimeout(() => setCopiedLink(false), 3000);
   };
 
+  const handleSelectPatientColor = (patientName, colorKey) => {
+    const updatedColors = { ...patientColors, [patientName]: colorKey };
+    setPatientColors(updatedColors);
+    try {
+      localStorage.setItem(PATIENT_COLORS_KEY, JSON.stringify(updatedColors));
+    } catch (err) {
+      console.warn("Não foi possível salvar a cor do paciente:", err);
+    }
+    setColorPickerPatient(null);
+  };
+
   const getPatientTheme = (name) => {
+    const customKey = patientColors[name];
+    if (customKey && THEME_PALETTES[customKey]) {
+      return THEME_PALETTES[customKey];
+    }
+
     switch (name) {
       case 'Tania':
-        return {
-          bg: 'bg-pink-100 border-pink-300 text-pink-950',
-          pin: 'bg-rose-500',
-          badge: 'bg-pink-200 text-pink-800 border-pink-300',
-          filterActive: 'bg-pink-200 border-pink-400 text-pink-900 font-black ring-2 ring-pink-400',
-          filterInactive: 'bg-pink-50/80 text-pink-800 border-pink-200 hover:bg-pink-100',
-        };
+        return THEME_PALETTES.pink;
       case 'Oscar':
-        return {
-          bg: 'bg-amber-100 border-amber-300 text-amber-950',
-          pin: 'bg-amber-500',
-          badge: 'bg-amber-200 text-amber-900 border-amber-300',
-          filterActive: 'bg-amber-200 border-amber-400 text-amber-950 font-black ring-2 ring-amber-400',
-          filterInactive: 'bg-amber-50/80 text-amber-800 border-amber-200 hover:bg-amber-100',
-        };
+        return THEME_PALETTES.amber;
       case 'Bruna':
-        return {
-          bg: 'bg-purple-100 border-purple-300 text-purple-950',
-          pin: 'bg-purple-500',
-          badge: 'bg-purple-200 text-purple-900 border-purple-300',
-          filterActive: 'bg-purple-200 border-purple-400 text-purple-950 font-black ring-2 ring-purple-400',
-          filterInactive: 'bg-purple-50/80 text-purple-800 border-purple-200 hover:bg-purple-100',
-        };
+        return THEME_PALETTES.purple;
       default:
-        return {
-          bg: 'bg-emerald-100 border-emerald-300 text-emerald-950',
-          pin: 'bg-emerald-500',
-          badge: 'bg-emerald-200 text-emerald-900 border-emerald-300',
-          filterActive: 'bg-emerald-200 border-emerald-400 text-emerald-950 font-black ring-2 ring-emerald-400',
-          filterInactive: 'bg-emerald-50/80 text-emerald-800 border-emerald-200 hover:bg-emerald-100',
-        };
+        return THEME_PALETTES.emerald;
     }
   };
+
+  const isCompactPatientBar = optionsList.clientes.length >= 4;
 
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-slate-100 text-slate-800 font-sans pb-12">
@@ -788,37 +871,71 @@ _Tenha um ótimo atendimento!_`;
         </div>
       </header>
 
+      {/* Banner de Notificação para HOJE */}
+      {todayAppointments.length > 0 && (
+        <div className="w-full max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 mt-4 print:hidden">
+          <div className="bg-emerald-50 border-2 border-emerald-300 rounded-3xl p-3.5 sm:p-4 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3 text-left">
+            <div className="flex items-center space-x-3 text-left">
+              <div className="p-2.5 bg-emerald-500 text-white rounded-2xl shrink-0">
+                <BellRing className="w-5 h-5 animate-bounce" />
+              </div>
+              <div className="text-left">
+                <h3 className="text-xs sm:text-sm font-black text-emerald-950 text-left">
+                  {todayAppointments.length === 1 
+                    ? 'Existe 1 consulta médica agendada para HOJE!' 
+                    : `Existem ${todayAppointments.length} consultas médicas agendadas para HOJE!`}
+                </h3>
+                <p className="text-[11px] text-emerald-800 mt-0.5 text-left">
+                  Pacientes hoje: <span className="font-bold">{todayAppointments.map(a => `${a.cliente} (${a.especialidade})`).join(', ')}</span>
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleSendAllTodayRemindersSummary}
+              className="w-full md:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black shadow-xs transition flex items-center justify-center space-x-2 shrink-0"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>Enviar {todayAppointments.length} Lembretes (WhatsApp)</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Conteúdo Principal */}
-      <main className="w-full max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 mt-4 sm:mt-5">
-        <div className="w-full bg-white rounded-3xl p-3.5 sm:p-5 shadow-sm border border-slate-200 mb-5 space-y-3.5">
+      <main className="w-full max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 mt-4">
+        <div className="bg-white rounded-3xl p-3 sm:p-5 shadow-xs border border-slate-200/80 mb-5 space-y-3 print:hidden">
           
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            
+            {/* Alternar Abas */}
             <div className="grid grid-cols-2 sm:flex items-center bg-slate-100 p-1 rounded-2xl w-full lg:w-auto">
               <button
                 onClick={() => setViewMode('proximas')}
-                className={`flex items-center justify-center space-x-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition ${
+                className={`flex items-center justify-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-bold transition ${
                   viewMode === 'proximas' 
                     ? 'bg-white text-slate-900 shadow-xs' 
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <CalendarDays className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                <span className="truncate">Próximas</span>
+                <CalendarDays className="w-4 h-4 text-amber-500 shrink-0" />
+                <span>Próximas</span>
               </button>
               
               <button
                 onClick={() => setViewMode('historico')}
-                className={`flex items-center justify-center space-x-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition ${
+                className={`flex items-center justify-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-bold transition ${
                   viewMode === 'historico' 
                     ? 'bg-white text-slate-900 shadow-xs' 
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <History className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                <span className="truncate">Histórico</span>
+                <History className="w-4 h-4 text-indigo-500 shrink-0" />
+                <span>Histórico</span>
               </button>
             </div>
 
+            {/* Pesquisa */}
             <div className="relative flex-1 w-full lg:max-w-md text-left">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
@@ -826,7 +943,7 @@ _Tenha um ótimo atendimento!_`;
                 placeholder="Pesquisar médico, especialidade ou clínica..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs focus:ring-2 focus:ring-amber-400 focus:outline-none transition text-left"
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs focus:ring-2 focus:ring-amber-400 focus:outline-none transition text-left"
               />
               {searchTerm && (
                 <button 
@@ -837,17 +954,23 @@ _Tenha um ótimo atendimento!_`;
                 </button>
               )}
             </div>
+
           </div>
 
-          {/* FILTRO DINÂMICO DE PACIENTES COM ARRASTAR E SOLTAR */}
-          <div className="flex flex-wrap items-center gap-1.5 pt-1 text-left w-full">
-            <span className="text-[11px] font-bold text-slate-500 mr-1 shrink-0 flex items-center gap-1">
-              Paciente:
-            </span>
+          {/* FILTRO DINÂMICO DE PACIENTES COM ARRASTAR E SOLTAR + SELETOR DE CORES */}
+          <div className={`flex items-center ${isCompactPatientBar ? 'gap-1 overflow-x-auto scrollbar-none' : 'flex-wrap gap-1.5'} pt-1 text-left w-full`}>
+            {!isCompactPatientBar && (
+              <span className="text-[11px] font-bold text-slate-500 mr-1 shrink-0 flex items-center gap-1">
+                Paciente:
+              </span>
+            )}
             
             <button
-              onClick={() => setSelectedPatient('Todos')}
-              className={`px-2.5 py-1 rounded-xl text-xs transition shrink-0 border ${
+              onClick={() => {
+                setSelectedPatient('Todos');
+                setColorPickerPatient(null);
+              }}
+              className={`${isCompactPatientBar ? 'px-2 py-1 text-[10px] sm:text-xs' : 'px-2.5 py-1 text-xs'} rounded-xl transition shrink-0 border ${
                 selectedPatient === 'Todos'
                   ? 'bg-slate-900 border-slate-900 text-white font-black'
                   : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -874,19 +997,68 @@ _Tenha um ótimo atendimento!_`;
                     onDragOver={handleDragOverPatient}
                     onDrop={(e) => handleDropPatient(e, patient)}
                     onDragEnd={() => setDraggedPatient(null)}
-                    onClick={() => setSelectedPatient(patient)}
-                    title="Arraste para reordenar a posição"
-                    className={`flex items-center space-x-1 px-2.5 py-1 rounded-xl text-xs transition shrink-0 border cursor-grab active:cursor-grabbing select-none ${
+                    onClick={() => {
+                      if (isActive) {
+                        setColorPickerPatient(colorPickerPatient === patient ? null : patient);
+                      } else {
+                        setSelectedPatient(patient);
+                        setColorPickerPatient(patient);
+                      }
+                    }}
+                    title="Toque para filtrar e escolher a cor • Arraste para reordenar"
+                    className={`flex items-center ${isCompactPatientBar ? 'space-x-0.5 px-1.5 sm:px-2 py-1 text-[10px] sm:text-xs' : 'space-x-1 px-2.5 py-1 text-xs'} rounded-xl transition shrink-0 border cursor-grab active:cursor-grabbing select-none ${
                       isActive ? theme.filterActive : theme.filterInactive
                     } ${isBeingDragged ? 'opacity-50 scale-95' : ''}`}
                   >
-                    <GripVertical className="w-3 h-3 opacity-40 shrink-0" />
-                    <span>{patient}</span>
+                    <GripVertical className={`${isCompactPatientBar ? 'w-2.5 h-2.5' : 'w-3 h-3'} opacity-40 shrink-0`} />
+                    <span className="truncate max-w-[68px] sm:max-w-none">{patient}</span>
+                    {isActive && (
+                      <Palette className={`${isCompactPatientBar ? 'w-2.5 h-2.5' : 'w-3 h-3'} opacity-75 shrink-0 ml-0.5`} />
+                    )}
                   </button>
                 );
               })
             )}
           </div>
+
+          {/* Barra Pop-up Discreta de Seleção de Cor do Paciente */}
+          {colorPickerPatient && (
+            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs animate-fadeIn">
+              <div className="flex items-center space-x-1.5 text-slate-700 font-bold text-[11px]">
+                <Palette className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <span>Cor de <strong className="text-slate-900">{colorPickerPatient}</strong>:</span>
+              </div>
+
+              <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                {Object.entries(THEME_PALETTES).map(([key, palette]) => {
+                  const currentTheme = getPatientTheme(colorPickerPatient);
+                  const isSelectedColor = currentTheme.swatch === palette.swatch;
+
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => handleSelectPatientColor(colorPickerPatient, key)}
+                      title={palette.label}
+                      className={`w-6 h-6 rounded-full ${palette.swatch} border-2 transition transform hover:scale-110 flex items-center justify-center ${
+                        isSelectedColor ? 'border-slate-900 scale-110 shadow-xs' : 'border-white shadow-2xs'
+                      }`}
+                    >
+                      {isSelectedColor && <Check className="w-3.5 h-3.5 text-white drop-shadow-xs" />}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setColorPickerPatient(null)}
+                  className="ml-1 p-1 text-slate-400 hover:text-slate-700 rounded-lg"
+                  title="Fechar seletor de cores"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
 
         </div>
 
