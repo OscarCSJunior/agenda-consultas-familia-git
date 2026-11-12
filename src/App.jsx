@@ -101,6 +101,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showAutoNoticeModal, setShowAutoNoticeModal] = useState(false);
   const [showInstallGuideModal, setShowInstallGuideModal] = useState(false);
@@ -202,6 +203,7 @@ export default function App() {
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
+      setShowProfileMenu(false);
     } catch (err) {
       console.error("Erro no Login do Google:", err);
       alert("Não foi possível conectar com a Conta Google: " + err.message);
@@ -212,6 +214,7 @@ export default function App() {
     if (!auth) return;
     try {
       await signOut(auth);
+      setShowProfileMenu(false);
     } catch (err) {
       console.error("Erro ao sair:", err);
     }
@@ -589,121 +592,136 @@ _Tenha um ótimo atendimento!_`;
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 font-sans pb-12">
-      {/* Cabeçalho */}
+      {/* Cabeçalho Limpo e Moderno */}
       <header className="bg-slate-900 text-white shadow-md sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3">
+          <div className="flex items-center justify-between gap-2">
             
-            <div className="flex items-center space-x-3 text-left w-full sm:w-auto">
-              <div className="p-2 bg-amber-400 text-slate-900 rounded-2xl shadow-md">
-                <Stethoscope className="w-6 h-6" />
+            {/* Título Minimalista */}
+            <div className="flex items-center space-x-2 text-left">
+              <div className="p-2 bg-amber-400 text-slate-900 rounded-xl shadow-xs">
+                <Stethoscope className="w-5 h-5" />
               </div>
               <div className="text-left">
-                <h1 className="text-xl font-black tracking-tight text-white flex items-center gap-2 text-left">
-                  Agenda de Consultas
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-400 text-amber-950 font-bold">
+                <h1 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-1.5">
+                  Agenda
+                  <span className="hidden sm:inline-block text-[10px] px-2 py-0.5 rounded-full bg-amber-400 text-amber-950 font-bold">
                     Post-its
                   </span>
                 </h1>
-                
-                <div className="mt-1 flex items-center gap-1.5 text-xs text-left">
-                  {isCloudConnected ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                      Sincronizado na Nuvem (Todos Vêem)
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
-                      <AlertTriangle className="w-3 h-3 text-amber-400" />
-                      Salvo Apenas Neste Aparelho
-                    </span>
-                  )}
-                </div>
+                <p className="text-[10px] text-slate-400 flex items-center gap-1">
+                  <span className={`inline-block w-1.5 h-1.5 rounded-full ${isCloudConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+                  {isCloudConnected ? 'Nuvem' : 'Local'}
+                </p>
               </div>
             </div>
 
-            {/* Ações Rápidas & Login */}
-            <div className="flex items-center space-x-2 w-full sm:w-auto justify-end flex-wrap gap-y-2">
+            {/* Ações do Topo: Botões Lado a Lado + Foto Perfil */}
+            <div className="flex items-center space-x-2 shrink-0">
               
-              {/* Botão de Carga Manual/Sincronização com o Firebase */}
-              <button
-                onClick={() => {
-                  if (db) {
-                    const colRef = collection(db, 'consultas_familia');
-                    seedCloudDatabase(colRef);
-                    alert("Consultas enviadas com sucesso para o banco no Firebase!");
-                  }
-                }}
-                className="flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs"
-                title="Subir lista inicial para o Firebase"
-              >
-                <Sparkles className="w-4 h-4 text-amber-300" />
-                <span>Restaurar Banco na Nuvem</span>
-              </button>
-
-              {/* Botão Login do Google */}
-              {currentUser && !currentUser.isAnonymous ? (
-                <div className="flex items-center space-x-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-xl">
-                  {currentUser.photoURL && (
-                    <img src={currentUser.photoURL} alt="User" className="w-5 h-5 rounded-full" />
-                  )}
-                  <span className="text-xs font-bold text-slate-200 truncate max-w-[100px]">
-                    {currentUser.displayName || currentUser.email}
-                  </span>
-                  <button
-                    onClick={handleGoogleLogout}
-                    className="text-slate-400 hover:text-rose-400 transition"
-                    title="Sair da Conta Google"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={handleGoogleLogin}
-                  className="flex items-center space-x-1.5 px-3 py-2 bg-white text-slate-900 hover:bg-slate-100 rounded-xl text-xs font-bold transition shadow-xs"
-                >
-                  <LogIn className="w-4 h-4 text-blue-600" />
-                  <span>Entrar com Google</span>
-                </button>
-              )}
-
-              <button
-                onClick={() => setShowInstallGuideModal(true)}
-                className="flex items-center space-x-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition"
-              >
-                <Smartphone className="w-4 h-4" />
-                <span>Baixar no Celular</span>
-              </button>
-
-              <button
-                onClick={() => setShowShareModal(true)}
-                className="flex items-center space-x-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-xl text-xs font-bold transition"
-              >
-                <Share2 className="w-4 h-4 text-amber-400" />
-                <span>Compartilhar</span>
-              </button>
-
+              {/* Botão Notificar Hoje */}
               <button
                 onClick={() => setShowAutoNoticeModal(true)}
-                className="relative flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition"
+                className="relative flex items-center justify-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs"
               >
-                <BellRing className="w-4 h-4" />
+                <BellRing className="w-3.5 h-3.5" />
                 <span>Notificar Hoje</span>
                 {todayAppointments.length > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-amber-400 text-amber-950 rounded-full flex items-center justify-center text-[10px] font-black border-2 border-slate-900 animate-bounce">
+                  <span className="ml-1 w-4 h-4 bg-amber-400 text-amber-950 rounded-full flex items-center justify-center text-[9px] font-black">
                     {todayAppointments.length}
                   </span>
                 )}
               </button>
 
+              {/* Botão Novo Post-it */}
               <button
                 onClick={() => openModal()}
-                className="flex items-center space-x-1.5 px-4 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 rounded-xl text-xs font-black transition"
+                className="flex items-center justify-center space-x-1.5 px-3 py-2 bg-amber-400 hover:bg-amber-500 text-amber-950 rounded-xl text-xs font-black transition shadow-xs"
               >
-                <Plus className="w-4 h-4" />
-                <span>Novo Post-it</span>
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Novo Post-it</span>
               </button>
+
+              {/* Foto do Perfil com Pop-up Popover */}
+              <div className="relative ml-1">
+                <button
+                  onClick={() => setShowProfileMenu(!showProfileMenu)}
+                  className="w-9 h-9 rounded-full bg-slate-800 border-2 border-slate-700 hover:border-amber-400 overflow-hidden flex items-center justify-center transition focus:outline-none"
+                  title="Opções da Conta"
+                >
+                  {currentUser && currentUser.photoURL ? (
+                    <img src={currentUser.photoURL} alt="Perfil" className="w-full h-full object-cover" />
+                  ) : (
+                    <User className="w-5 h-5 text-amber-400" />
+                  )}
+                </button>
+
+                {/* Pop-up do Perfil */}
+                {showProfileMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowProfileMenu(false)} />
+                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 p-3 text-slate-800 text-left space-y-2">
+                      
+                      <div className="pb-2 border-b border-slate-100">
+                        <p className="text-xs font-bold text-slate-900 truncate">
+                          {currentUser && !currentUser.isAnonymous 
+                            ? (currentUser.displayName || currentUser.email) 
+                            : 'Visitante (Anônimo)'}
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          {isCloudConnected ? '🟢 Conectado na Nuvem' : '🟡 Modo Aparelho Local'}
+                        </p>
+                      </div>
+
+                      <div className="space-y-1 text-xs font-semibold">
+                        <button
+                          onClick={() => {
+                            setShowProfileMenu(false);
+                            setShowShareModal(true);
+                          }}
+                          className="w-full flex items-center space-x-2 px-3 py-2 hover:bg-slate-100 rounded-xl text-slate-700 text-left"
+                        >
+                          <Share2 className="w-4 h-4 text-blue-600" />
+                          <span>Compartilhar App</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setShowProfileMenu(false);
+                            setShowInstallGuideModal(true);
+                          }}
+                          className="w-full flex items-center space-x-2 px-3 py-2 hover:bg-slate-100 rounded-xl text-slate-700 text-left"
+                        >
+                          <Smartphone className="w-4 h-4 text-indigo-600" />
+                          <span>Baixar no Celular</span>
+                        </button>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-100">
+                        {currentUser && !currentUser.isAnonymous ? (
+                          <button
+                            onClick={handleGoogleLogout}
+                            className="w-full flex items-center space-x-2 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold text-left transition"
+                          >
+                            <LogOut className="w-4 h-4" />
+                            <span>Sair da Conta Google</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={handleGoogleLogin}
+                            className="w-full flex items-center space-x-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold text-left transition"
+                          >
+                            <LogIn className="w-4 h-4" />
+                            <span>Entrar com Google</span>
+                          </button>
+                        )}
+                      </div>
+
+                    </div>
+                  </>
+                )}
+              </div>
+
             </div>
 
           </div>
@@ -711,32 +729,32 @@ _Tenha um ótimo atendimento!_`;
       </header>
 
       {/* Conteúdo Principal */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-        <div className="bg-white rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-200/80 mb-6 space-y-4">
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-5">
+        <div className="bg-white rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-200 mb-5 space-y-4">
           
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div className="flex items-center bg-slate-100 p-1 rounded-2xl">
               <button
                 onClick={() => setViewMode('proximas')}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+                className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
                   viewMode === 'proximas' 
                     ? 'bg-white text-slate-900 shadow-xs' 
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <CalendarDays className="w-4 h-4 text-amber-500" />
+                <CalendarDays className="w-3.5 h-3.5 text-amber-500" />
                 <span>Próximos Agendamentos</span>
               </button>
               
               <button
                 onClick={() => setViewMode('historico')}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+                className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
                   viewMode === 'historico' 
                     ? 'bg-white text-slate-900 shadow-xs' 
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <History className="w-4 h-4 text-indigo-500" />
+                <History className="w-3.5 h-3.5 text-indigo-500" />
                 <span>Histórico Passado</span>
               </button>
             </div>
@@ -748,7 +766,7 @@ _Tenha um ótimo atendimento!_`;
                 placeholder="Pesquisar médico, especialidade ou clínica..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs focus:ring-2 focus:ring-amber-400 focus:outline-none transition text-left"
+                className="w-full pl-10 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs focus:ring-2 focus:ring-amber-400 focus:outline-none transition text-left"
               />
               {searchTerm && (
                 <button 
@@ -762,12 +780,12 @@ _Tenha um ótimo atendimento!_`;
           </div>
 
           {/* FILTRO DINÂMICO DE PACIENTES */}
-          <div className="flex items-center space-x-2 overflow-x-auto pt-2 pb-1 scrollbar-none text-left">
+          <div className="flex items-center space-x-2 overflow-x-auto pt-1 pb-1 scrollbar-none text-left">
             <span className="text-xs font-bold text-slate-500 mr-1 shrink-0">Paciente:</span>
             
             <button
               onClick={() => setSelectedPatient('Todos')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs transition shrink-0 border ${
+              className={`px-3 py-1 rounded-xl text-xs transition shrink-0 border ${
                 selectedPatient === 'Todos'
                   ? 'bg-slate-900 border-slate-900 text-white font-black'
                   : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -789,7 +807,7 @@ _Tenha um ótimo atendimento!_`;
                   <button
                     key={patient}
                     onClick={() => setSelectedPatient(patient)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs transition shrink-0 border ${
+                    className={`px-3 py-1 rounded-xl text-xs transition shrink-0 border ${
                       isActive ? theme.filterActive : theme.filterInactive
                     }`}
                   >
@@ -823,7 +841,7 @@ _Tenha um ótimo atendimento!_`;
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredAppointments.map(appItem => {
               const theme = getPatientTheme(appItem.cliente);
               const isToday = appItem.dia === todayStr;
@@ -831,14 +849,14 @@ _Tenha um ótimo atendimento!_`;
               return (
                 <div
                   key={appItem.id}
-                  className={`relative p-6 rounded-3xl border shadow-xs transition hover:shadow-md ${theme.bg} flex flex-col justify-between text-left`}
+                  className={`relative p-5 rounded-3xl border shadow-xs transition hover:shadow-md ${theme.bg} flex flex-col justify-between text-left`}
                 >
                   <div className={`absolute -top-2.5 left-6 w-5 h-5 rounded-full ${theme.pin} shadow-md border-2 border-white`} />
 
                   <div>
-                    <div className="flex items-start justify-between gap-2 mb-4 text-left">
+                    <div className="flex items-start justify-between gap-2 mb-3 text-left">
                       <div className="text-left">
-                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-black border mb-1.5 ${theme.badge}`}>
+                        <span className={`inline-block px-3 py-0.5 rounded-full text-[11px] font-black border mb-1 ${theme.badge}`}>
                           {appItem.cliente}
                         </span>
                         
@@ -849,13 +867,6 @@ _Tenha um ótimo atendimento!_`;
                       </div>
 
                       <div className="flex items-center space-x-1 shrink-0">
-                        <button
-                          onClick={() => openModal(appItem, true)}
-                          className="p-1.5 hover:bg-emerald-500/15 rounded-lg text-emerald-800 transition"
-                          title="Agendar Retorno"
-                        >
-                          <RotateCcw className="w-4 h-4 text-emerald-700" />
-                        </button>
                         <button
                           onClick={() => openModal(appItem)}
                           className="p-1.5 hover:bg-black/5 rounded-lg text-slate-700 transition"
@@ -873,19 +884,19 @@ _Tenha um ótimo atendimento!_`;
                       </div>
                     </div>
 
-                    <div className="space-y-2.5 text-xs text-left">
+                    <div className="space-y-2 text-xs text-left">
                       
-                      {/* 2. Especialidade (Após Médico) */}
-                      <div className="flex items-start space-x-2.5 text-left">
-                        <Activity className="w-4 h-4 opacity-70 shrink-0 mt-0.5 text-slate-700" />
+                      {/* 2. Especialidade */}
+                      <div className="flex items-start space-x-2 text-left">
+                        <Activity className="w-3.5 h-3.5 opacity-70 shrink-0 mt-0.5 text-slate-700" />
                         <span className="text-left">
                           <strong className="font-bold">Especialidade:</strong> {appItem.especialidade}
                         </span>
                       </div>
 
-                      {/* 3. Clínica / Hospital (Antes da Data) */}
-                      <div className="flex items-start space-x-2.5 text-left">
-                        <MapPin className="w-4 h-4 opacity-70 shrink-0 mt-0.5 text-slate-700" />
+                      {/* 3. Clínica / Hospital */}
+                      <div className="flex items-start space-x-2 text-left">
+                        <MapPin className="w-3.5 h-3.5 opacity-70 shrink-0 mt-0.5 text-slate-700" />
                         <div className="text-left">
                           <p className="text-left"><strong className="font-bold">Clínica:</strong> {appItem.local}</p>
                           {appItem.endereco && (
@@ -895,13 +906,13 @@ _Tenha um ótimo atendimento!_`;
                       </div>
 
                       {/* Data e Hora */}
-                      <div className="flex items-center space-x-2.5 text-left">
-                        <Calendar className="w-4 h-4 opacity-70 shrink-0 text-slate-700" />
+                      <div className="flex items-center space-x-2 text-left">
+                        <Calendar className="w-3.5 h-3.5 opacity-70 shrink-0 text-slate-700" />
                         <span className="font-mono font-bold text-left">
                           {formatDate(appItem.dia)} {appItem.hora && appItem.hora !== '00:00' ? `às ${appItem.hora}h` : ''}
                         </span>
                         {isToday && (
-                          <span className="ml-2 px-2 py-0.5 bg-emerald-500 text-white rounded-md text-[10px] font-black uppercase tracking-wider animate-pulse">
+                          <span className="ml-1.5 px-2 py-0.5 bg-emerald-500 text-white rounded-md text-[9px] font-black uppercase tracking-wider animate-pulse">
                             HOJE
                           </span>
                         )}
@@ -909,48 +920,50 @@ _Tenha um ótimo atendimento!_`;
 
                       {/* Observações */}
                       {appItem.observacoes ? (
-                        <div className="mt-3 p-3 bg-white/80 border border-black/10 rounded-2xl text-xs text-left space-y-1 shadow-2xs">
-                          <div className="flex items-center space-x-1.5 font-bold text-slate-800">
-                            <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <div className="mt-2.5 p-2.5 bg-white/80 border border-black/10 rounded-2xl text-xs text-left space-y-0.5 shadow-2xs">
+                          <div className="flex items-center space-x-1 font-bold text-slate-800 text-[11px]">
+                            <FileText className="w-3 h-3 text-amber-600 shrink-0" />
                             <span>Observações:</span>
                           </div>
-                          <p className="text-[11px] text-slate-700 leading-relaxed italic text-left pl-5">
+                          <p className="text-[11px] text-slate-700 leading-relaxed italic text-left pl-4">
                             "{appItem.observacoes}"
                           </p>
                         </div>
                       ) : (
-                        <div className="mt-3 p-2 bg-black/5 rounded-xl text-[10px] italic text-slate-500 text-left">
+                        <div className="mt-2.5 p-1.5 bg-black/5 rounded-xl text-[10px] italic text-slate-500 text-left">
                           Sem observações registradas.
                         </div>
                       )}
                     </div>
                   </div>
 
-                  <div className="mt-6 pt-4 border-t border-black/10 flex flex-col gap-2 text-left">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <button
-                        onClick={() => openGoogleMapsRoute(appItem.local, appItem.endereco)}
-                        className="w-full py-2 px-3 bg-white/80 hover:bg-white text-slate-900 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 border border-black/10"
-                      >
-                        <Navigation className="w-3.5 h-3.5 text-blue-600" />
-                        <span>Ver Rota no Maps</span>
-                      </button>
+                  {/* 3 Botões Retangulares em Linha Única (Maps, Retorno, WhatsApp) */}
+                  <div className="mt-4 pt-3 border-t border-black/10 grid grid-cols-3 gap-1.5 text-left">
+                    <button
+                      onClick={() => openGoogleMapsRoute(appItem.local, appItem.endereco)}
+                      className="py-2 px-1 bg-white/90 hover:bg-white text-slate-900 rounded-xl text-[10px] font-bold transition flex items-center justify-center space-x-1 border border-black/10 shadow-2xs"
+                      title="Google Maps"
+                    >
+                      <Navigation className="w-3 h-3 text-blue-600 shrink-0" />
+                      <span className="truncate">Maps</span>
+                    </button>
 
-                      <button
-                        onClick={() => openModal(appItem, true)}
-                        className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span>Agendar Retorno</span>
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => openModal(appItem, true)}
+                      className="py-2 px-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-bold transition flex items-center justify-center space-x-1 shadow-2xs"
+                      title="Agendar Retorno"
+                    >
+                      <RotateCcw className="w-3 h-3 shrink-0" />
+                      <span className="truncate">Retorno</span>
+                    </button>
 
                     <button
                       onClick={() => handleSendWhatsAppReminder(appItem)}
-                      className="w-full py-2 px-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5"
+                      className="py-2 px-1 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-[10px] font-bold transition flex items-center justify-center space-x-1 shadow-2xs"
+                      title="Enviar WhatsApp"
                     >
-                      <MessageCircle className="w-3.5 h-3.5" />
-                      <span>Enviar no WhatsApp</span>
+                      <MessageCircle className="w-3 h-3 text-amber-300 shrink-0" />
+                      <span className="truncate">Whats</span>
                     </button>
                   </div>
 
