@@ -185,12 +185,10 @@ export default function App() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showAutoNoticeModal, setShowAutoNoticeModal] = useState(false);
   const [showInstallGuideModal, setShowInstallGuideModal] = useState(false);
+  const [showColorModal, setShowColorModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   
   const dateInputRef = useRef(null);
-  const longPressTimerRef = useRef(null);
-  const isLongPressTriggeredRef = useRef(false);
-  const pressStartPosRef = useRef({ x: 0, y: 0 });
   const [itemToDelete, setItemToDelete] = useState(null);
   const [isCloudConnected, setIsCloudConnected] = useState(false);
 
@@ -214,7 +212,6 @@ export default function App() {
       return {};
     }
   });
-  const [colorPickerPatient, setColorPickerPatient] = useState(null);
 
   const [viewMode, setViewMode] = useState('proximas'); 
   const [selectedPatient, setSelectedPatient] = useState('Todos');
@@ -440,48 +437,6 @@ export default function App() {
       }
     }
     setDraggedPatient(null);
-  };
-
-  // Controle de toque longo (3 segundos) para abrir o seletor de cores
-  const handlePatientPressStart = (e, patient) => {
-    if (e.button !== undefined && e.button !== 0) return;
-
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    pressStartPosRef.current = { x: clientX, y: clientY };
-
-    isLongPressTriggeredRef.current = false;
-    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
-
-    longPressTimerRef.current = setTimeout(() => {
-      isLongPressTriggeredRef.current = true;
-      setColorPickerPatient(patient);
-      if (navigator.vibrate) {
-        try { navigator.vibrate(60); } catch {}
-      }
-    }, 3000);
-  };
-
-  const handlePatientPressMove = (e) => {
-    if (!longPressTimerRef.current) return;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-
-    const deltaX = Math.abs(clientX - pressStartPosRef.current.x);
-    const deltaY = Math.abs(clientY - pressStartPosRef.current.y);
-
-    // Cancela o toque longo apenas se o usuário realmente arrastar o dedo/mouse (> 12px)
-    if (deltaX > 12 || deltaY > 12) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  };
-
-  const handlePatientPressEnd = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
   };
 
   const handleSendWhatsAppReminder = (appItem) => {
@@ -755,7 +710,6 @@ _Tenha um ótimo atendimento!_`;
     } catch (err) {
       console.warn("Não foi possível salvar a cor do paciente:", err);
     }
-    setColorPickerPatient(null);
   };
 
   const getPatientTheme = (name) => {
@@ -862,6 +816,17 @@ _Tenha um ótimo atendimento!_`;
                       </div>
 
                       <div className="space-y-1 text-xs font-semibold">
+                        <button
+                          onClick={() => {
+                            setShowProfileMenu(false);
+                            setShowColorModal(true);
+                          }}
+                          className="w-full flex items-center space-x-2 px-3 py-2 hover:bg-slate-100 rounded-xl text-slate-700 text-left"
+                        >
+                          <Palette className="w-4 h-4 text-pink-600" />
+                          <span>Definir Cor de Paciente</span>
+                        </button>
+
                         <button
                           onClick={() => {
                             setShowProfileMenu(false);
@@ -1002,7 +967,7 @@ _Tenha um ótimo atendimento!_`;
 
           </div>
 
-          {/* FILTRO DINÂMICO DE PACIENTES COM ARRASTAR E SOLTAR + SELETOR DE CORES */}
+          {/* FILTRO DINÂMICO DE PACIENTES COM ARRASTAR E SOLTAR */}
           <div className={`flex items-center ${isCompactPatientBar ? 'gap-1 overflow-x-auto scrollbar-none' : 'flex-wrap gap-1.5'} pt-1 text-left w-full`}>
             {!isCompactPatientBar && (
               <span className="text-[11px] font-bold text-slate-500 mr-1 shrink-0 flex items-center gap-1">
@@ -1011,10 +976,7 @@ _Tenha um ótimo atendimento!_`;
             )}
             
             <button
-              onClick={() => {
-                setSelectedPatient('Todos');
-                setColorPickerPatient(null);
-              }}
+              onClick={() => setSelectedPatient('Todos')}
               className={`${isCompactPatientBar ? 'px-2 py-1 text-[10px] sm:text-xs' : 'px-2.5 py-1 text-xs'} rounded-xl transition shrink-0 border ${
                 selectedPatient === 'Todos'
                   ? 'bg-slate-900 border-slate-900 text-white font-black'
@@ -1038,85 +1000,24 @@ _Tenha um ótimo atendimento!_`;
                   <button
                     key={patient}
                     type="button"
-                    draggable={colorPickerPatient === null}
-                    onDragStart={(e) => {
-                      handlePatientPressEnd();
-                      handleDragStartPatient(e, patient);
-                    }}
+                    draggable
+                    onDragStart={(e) => handleDragStartPatient(e, patient)}
                     onDragOver={handleDragOverPatient}
                     onDrop={(e) => handleDropPatient(e, patient)}
                     onDragEnd={() => setDraggedPatient(null)}
-                    onMouseDown={(e) => handlePatientPressStart(e, patient)}
-                    onMouseMove={handlePatientPressMove}
-                    onMouseUp={handlePatientPressEnd}
-                    onMouseLeave={handlePatientPressEnd}
-                    onTouchStart={(e) => handlePatientPressStart(e, patient)}
-                    onTouchMove={handlePatientPressMove}
-                    onTouchEnd={handlePatientPressEnd}
-                    onTouchCancel={handlePatientPressEnd}
-                    onContextMenu={(e) => e.preventDefault()}
-                    onClick={() => {
-                      if (isLongPressTriggeredRef.current) {
-                        isLongPressTriggeredRef.current = false;
-                        return;
-                      }
-                      setSelectedPatient(patient);
-                    }}
-                    style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
-                    title="Toque para filtrar • Segure por 3 segundos para escolher a cor • Arraste para reordenar"
+                    onClick={() => setSelectedPatient(patient)}
+                    title="Toque para filtrar • Arraste para reordenar"
                     className={`flex items-center ${isCompactPatientBar ? 'space-x-0.5 px-1.5 sm:px-2 py-1 text-[10px] sm:text-xs' : 'space-x-1 px-2.5 py-1 text-xs'} rounded-xl transition shrink-0 border cursor-grab active:cursor-grabbing select-none ${
                       isActive ? theme.filterActive : theme.filterInactive
                     } ${isBeingDragged ? 'opacity-50 scale-95' : ''}`}
                   >
                     <GripVertical className={`${isCompactPatientBar ? 'w-2.5 h-2.5' : 'w-3 h-3'} opacity-40 shrink-0`} />
                     <span className="truncate max-w-[68px] sm:max-w-none">{patient}</span>
-                    {colorPickerPatient === patient && (
-                      <Palette className={`${isCompactPatientBar ? 'w-2.5 h-2.5' : 'w-3 h-3'} opacity-75 shrink-0 ml-0.5`} />
-                    )}
                   </button>
                 );
               })
             )}
           </div>
-
-          {/* Barra Pop-up Discreta de Seleção de Cor do Paciente */}
-          {colorPickerPatient && (
-            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs animate-fadeIn">
-              <div className="flex items-center space-x-1.5 text-slate-700 font-bold text-[11px]">
-                <Palette className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                <span>Cor de <strong className="text-slate-900">{colorPickerPatient}</strong>:</span>
-              </div>
-
-              <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
-                {Object.entries(THEME_PALETTES).map(([key, palette]) => {
-                  const currentTheme = getPatientTheme(colorPickerPatient);
-                  const isSelectedColor = currentTheme.swatch === palette.swatch;
-
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => handleSelectPatientColor(colorPickerPatient, key)}
-                      title={palette.label}
-                      className={`w-6 h-6 rounded-full ${palette.swatch} border-2 transition transform hover:scale-110 flex items-center justify-center ${
-                        isSelectedColor ? 'border-slate-900 scale-110 shadow-xs' : 'border-white shadow-2xs'
-                      }`}
-                    >
-                      {isSelectedColor && <Check className="w-3.5 h-3.5 text-white drop-shadow-xs" />}
-                    </button>
-                  );
-                })}
-                <button
-                  type="button"
-                  onClick={() => setColorPickerPatient(null)}
-                  className="ml-1 p-1 text-slate-400 hover:text-slate-700 rounded-lg"
-                  title="Fechar seletor de cores"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
 
         </div>
 
@@ -1308,6 +1209,78 @@ _Tenha um ótimo atendimento!_`;
                 Sim, Excluir
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Definir Cor de Paciente */}
+      {showColorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl p-6 text-left space-y-4 border border-slate-100">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center space-x-2 text-pink-600">
+                <Palette className="w-5 h-5" />
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Definir Cor de Paciente</h3>
+                  <p className="text-[11px] text-slate-500">Toque na cor desejada para cada membro da família.</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowColorModal(false)} 
+                className="text-slate-400 hover:text-slate-600 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+              {optionsList.clientes.length === 0 ? (
+                <p className="text-xs text-slate-500 text-center py-4">Nenhum paciente cadastrado ainda.</p>
+              ) : (
+                optionsList.clientes.map(patient => {
+                  const currentTheme = getPatientTheme(patient);
+
+                  return (
+                    <div 
+                      key={patient} 
+                      className={`p-3 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition ${currentTheme.bg}`}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <span className={`w-3 h-3 rounded-full ${currentTheme.pin} border border-white shadow-2xs shrink-0`} />
+                        <span className="text-xs font-black text-slate-900">{patient}</span>
+                      </div>
+
+                      <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                        {Object.entries(THEME_PALETTES).map(([key, palette]) => {
+                          const isSelectedColor = currentTheme.swatch === palette.swatch;
+
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => handleSelectPatientColor(patient, key)}
+                              title={palette.label}
+                              className={`w-6 h-6 rounded-full ${palette.swatch} border-2 transition transform hover:scale-110 flex items-center justify-center ${
+                                isSelectedColor ? 'border-slate-900 scale-110 shadow-xs' : 'border-white shadow-2xs'
+                              }`}
+                            >
+                              {isSelectedColor && <Check className="w-3.5 h-3.5 text-white drop-shadow-xs" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <button
+              onClick={() => setShowColorModal(false)}
+              className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition"
+            >
+              Concluído
+            </button>
           </div>
         </div>
       )}
