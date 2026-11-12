@@ -190,6 +190,7 @@ export default function App() {
   const dateInputRef = useRef(null);
   const longPressTimerRef = useRef(null);
   const isLongPressTriggeredRef = useRef(false);
+  const pressStartPosRef = useRef({ x: 0, y: 0 });
   const [itemToDelete, setItemToDelete] = useState(null);
   const [isCloudConnected, setIsCloudConnected] = useState(false);
 
@@ -443,7 +444,12 @@ export default function App() {
 
   // Controle de toque longo (3 segundos) para abrir o seletor de cores
   const handlePatientPressStart = (e, patient) => {
-    if (e.button && e.button !== 0) return; // Ignora clique com botão direito
+    if (e.button !== undefined && e.button !== 0) return;
+
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    pressStartPosRef.current = { x: clientX, y: clientY };
+
     isLongPressTriggeredRef.current = false;
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
 
@@ -451,9 +457,24 @@ export default function App() {
       isLongPressTriggeredRef.current = true;
       setColorPickerPatient(patient);
       if (navigator.vibrate) {
-        try { navigator.vibrate(50); } catch {}
+        try { navigator.vibrate(60); } catch {}
       }
     }, 3000);
+  };
+
+  const handlePatientPressMove = (e) => {
+    if (!longPressTimerRef.current) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    const deltaX = Math.abs(clientX - pressStartPosRef.current.x);
+    const deltaY = Math.abs(clientY - pressStartPosRef.current.y);
+
+    // Cancela o toque longo apenas se o usuário realmente arrastar o dedo/mouse (> 12px)
+    if (deltaX > 12 || deltaY > 12) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
   };
 
   const handlePatientPressEnd = () => {
@@ -1025,10 +1046,14 @@ _Tenha um ótimo atendimento!_`;
                     onDragOver={handleDragOverPatient}
                     onDrop={(e) => handleDropPatient(e, patient)}
                     onDragEnd={() => setDraggedPatient(null)}
-                    onPointerDown={(e) => handlePatientPressStart(e, patient)}
-                    onPointerUp={handlePatientPressEnd}
-                    onPointerLeave={handlePatientPressEnd}
-                    onPointerCancel={handlePatientPressEnd}
+                    onMouseDown={(e) => handlePatientPressStart(e, patient)}
+                    onMouseMove={handlePatientPressMove}
+                    onMouseUp={handlePatientPressEnd}
+                    onMouseLeave={handlePatientPressEnd}
+                    onTouchStart={(e) => handlePatientPressStart(e, patient)}
+                    onTouchMove={handlePatientPressMove}
+                    onTouchEnd={handlePatientPressEnd}
+                    onTouchCancel={handlePatientPressEnd}
                     onContextMenu={(e) => e.preventDefault()}
                     onClick={() => {
                       if (isLongPressTriggeredRef.current) {
@@ -1039,7 +1064,7 @@ _Tenha um ótimo atendimento!_`;
                     }}
                     style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
                     title="Toque para filtrar • Segure por 3 segundos para escolher a cor • Arraste para reordenar"
-                    className={`flex items-center ${isCompactPatientBar ? 'space-x-0.5 px-1.5 sm:px-2 py-1 text-[10px] sm:text-xs' : 'space-x-1 px-2.5 py-1 text-xs'} rounded-xl transition shrink-0 border cursor-grab active:cursor-grabbing select-none touch-manipulation ${
+                    className={`flex items-center ${isCompactPatientBar ? 'space-x-0.5 px-1.5 sm:px-2 py-1 text-[10px] sm:text-xs' : 'space-x-1 px-2.5 py-1 text-xs'} rounded-xl transition shrink-0 border cursor-grab active:cursor-grabbing select-none ${
                       isActive ? theme.filterActive : theme.filterInactive
                     } ${isBeingDragged ? 'opacity-50 scale-95' : ''}`}
                   >
